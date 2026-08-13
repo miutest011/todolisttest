@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>我的待办清单</title>
+<style>
+  body {
+    font-family: sans-serif;
+    max-width: 480px;
+    margin: 40px auto;
+    padding: 0 16px;
+    background: #f5f5f5;
+  }
+
+  h1 {
+    text-align: center;
+  }
+
+  .input-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  #todo-input {
+    flex: 1;
+    padding: 8px;
+    font-size: 16px;
+  }
+
+  #add-btn {
+    padding: 8px 16px;
+    font-size: 16px;
+    cursor: pointer;
+  }
+
+  ul {
+    list-style: none;
+    padding: 0;
+  }
+
+  li {
+    display: flex;
+    align-items: center;
+    background: white;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    border-radius: 6px;
+  }
+
+  .todo-text {
+    flex: 1;
+    cursor: pointer;
+  }
+
+  li.done .todo-text {
+    color: #999;
+    text-decoration: line-through;
+  }
+
+  .delete-btn {
+    background: none;
+    border: none;
+    color: #c00;
+    font-size: 16px;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<h1>我的待办清单</h1>
+
+<div class="input-row">
+  <input id="todo-input" type="text" placeholder="要做什么？">
+  <button id="add-btn">添加</button>
+</div>
+
+<ul id="todo-list"></ul>
+
+<script>
+  // todos 是所有待办事项存在内存里的样子：
+  // 一个数组，每一项是 { text: "任务内容", done: true/false }
+  let todos = loadTodos();
+
+  const inputEl = document.getElementById('todo-input');
+  const addBtnEl = document.getElementById('add-btn');
+  const listEl = document.getElementById('todo-list');
+
+  // 从 localStorage 读出上次保存的数据，没有就返回空数组
+  function loadTodos() {
+    const saved = localStorage.getItem('todos');
+    return saved ? JSON.parse(saved) : [];
+  }
+
+  // 把当前的 todos 存进 localStorage，转成文字才能存
+  function saveTodos() {
+    localStorage.setItem('todos', JSON.stringify(todos));
+  }
+
+  // 把 todos 数组重新画成页面上的列表
+  // 每次数据变化后都要调用一次，页面才会更新
+  function render() {
+    listEl.innerHTML = '';
+
+    todos.forEach((todo, index) => {
+      const li = document.createElement('li');
+      if (todo.done) {
+        li.classList.add('done');
+      }
+
+      const textSpan = document.createElement('span');
+      textSpan.className = 'todo-text';
+      textSpan.textContent = todo.text;
+      textSpan.addEventListener('click', () => toggleTodo(index));
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'delete-btn';
+      deleteBtn.textContent = '删除';
+      deleteBtn.addEventListener('click', () => deleteTodo(index));
+
+      li.appendChild(textSpan);
+      li.appendChild(deleteBtn);
+      listEl.appendChild(li);
+    });
+  }
+
+  function addTodo() {
+    const text = inputEl.value.trim();
+    if (text === '') return;
+
+    todos.push({ text: text, done: false });
+    inputEl.value = '';
+
+    saveTodos();
+    render();
+  }
+
+  function toggleTodo(index) {
+    todos[index].done = !todos[index].done;
+    saveTodos();
+    render();
+  }
+
+  function deleteTodo(index) {
+    todos.splice(index, 1);
+    saveTodos();
+    render();
+  }
+
+  addBtnEl.addEventListener('click', addTodo);
+  inputEl.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') addTodo();
+  });
+
+  render();
+</script>
+
+</body>
+</html>
