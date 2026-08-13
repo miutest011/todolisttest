@@ -54,6 +54,47 @@
     background: #3f7fcc;
   }
 
+  #category-select {
+    padding: 0 10px;
+    font-size: 14px;
+    border: 1px solid #e5e5e5;
+    border-radius: 8px;
+    background: white;
+    color: #666;
+    outline: none;
+  }
+
+  .filter-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .filter-tab {
+    padding: 6px 14px;
+    font-size: 13px;
+    border-radius: 16px;
+    background: #f2f2f2;
+    color: #666;
+    border: none;
+    cursor: pointer;
+  }
+
+  .filter-tab.active {
+    background: #4a90e2;
+    color: white;
+  }
+
+  .category-tag {
+    flex-shrink: 0;
+    font-size: 12px;
+    color: #999;
+    background: #f2f2f2;
+    padding: 2px 8px;
+    border-radius: 10px;
+    margin-right: 8px;
+  }
+
   ul {
     list-style: none;
     padding: 0;
@@ -146,24 +187,48 @@
 
 <div class="input-row">
   <input id="todo-input" type="text" placeholder="要做什么？">
+  <select id="category-select">
+    <option value="工作">工作</option>
+    <option value="生活">生活</option>
+    <option value="其他">其他</option>
+  </select>
   <button id="add-btn">添加</button>
 </div>
+
+<div id="filter-tabs" class="filter-tabs"></div>
 
 <ul id="todo-list"></ul>
 
 <script>
+  // 目前支持的分类，先固定写死，以后可以改成用户自己添加
+  const CATEGORIES = ['工作', '生活', '其他'];
+
+  // 当前选中要看哪个分类，'全部' 是特殊值，表示不筛选
+  let currentFilter = '全部';
+
   // todos 是所有待办事项存在内存里的样子：
-  // 一个数组，每一项是 { text: "任务内容", done: true/false }
+  // 一个数组，每一项是 { text: "任务内容", done: true/false, category: "工作" }
   let todos = loadTodos();
 
   const inputEl = document.getElementById('todo-input');
   const addBtnEl = document.getElementById('add-btn');
+  const categorySelectEl = document.getElementById('category-select');
+  const filterTabsEl = document.getElementById('filter-tabs');
   const listEl = document.getElementById('todo-list');
 
   // 从 localStorage 读出上次保存的数据，没有就返回空数组
   function loadTodos() {
     const saved = localStorage.getItem('todos');
-    return saved ? JSON.parse(saved) : [];
+    const parsed = saved ? JSON.parse(saved) : [];
+
+    // 老数据可能是加分类功能之前存的，没有 category 字段，给它们补一个默认值
+    parsed.forEach((todo) => {
+      if (!todo.category) {
+        todo.category = '其他';
+      }
+    });
+
+    return parsed;
   }
 
   // 把当前的 todos 存进 localStorage，转成文字才能存
@@ -171,13 +236,40 @@
     localStorage.setItem('todos', JSON.stringify(todos));
   }
 
+  // 把筛选标签（全部/工作/生活/其他）画出来，并高亮当前选中的那个
+  function renderFilterTabs() {
+    filterTabsEl.innerHTML = '';
+    const allTabs = ['全部', ...CATEGORIES];
+
+    allTabs.forEach((name) => {
+      const tab = document.createElement('button');
+      tab.className = 'filter-tab';
+      if (name === currentFilter) {
+        tab.classList.add('active');
+      }
+      tab.textContent = name;
+      tab.addEventListener('click', () => {
+        currentFilter = name;
+        render();
+      });
+      filterTabsEl.appendChild(tab);
+    });
+  }
+
   // 把 todos 数组重新画成页面上的列表
   // 每次数据变化后都要调用一次，页面才会更新
   function render() {
+    renderFilterTabs();
     listEl.innerHTML = '';
 
     todos.forEach((todo, index) => {
+      // 当前分类如果不是"全部"，就跳过不属于这个分类的任务
+      if (currentFilter !== '全部' && todo.category !== currentFilter) {
+        return;
+      }
+
       const li = document.createElement('li');
+      li.dataset.index = index;
       if (todo.done) {
         li.classList.add('done');
       }
@@ -188,6 +280,10 @@
         checkbox.classList.add('checked');
       }
       checkbox.addEventListener('click', () => toggleTodo(index));
+
+      const categoryTag = document.createElement('span');
+      categoryTag.className = 'category-tag';
+      categoryTag.textContent = todo.category;
 
       const textSpan = document.createElement('span');
       textSpan.className = 'todo-text';
@@ -200,6 +296,7 @@
       deleteBtn.addEventListener('click', () => deleteTodo(index));
 
       li.appendChild(checkbox);
+      li.appendChild(categoryTag);
       li.appendChild(textSpan);
       li.appendChild(deleteBtn);
       listEl.appendChild(li);
@@ -210,7 +307,7 @@
     const text = inputEl.value.trim();
     if (text === '') return;
 
-    todos.push({ text: text, done: false });
+    todos.push({ text: text, done: false, category: categorySelectEl.value });
     inputEl.value = '';
 
     saveTodos();
@@ -225,7 +322,7 @@
 
   // 把某一条的文字替换成一个输入框，让用户可以直接改文字
   function startEdit(index) {
-    const li = listEl.children[index];
+    const li = listEl.querySelector(`li[data-index="${index}"]`);
     const textSpan = li.querySelector('.todo-text');
 
     const input = document.createElement('input');
