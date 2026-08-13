@@ -48,9 +48,41 @@
     border-radius: 6px;
   }
 
+  .checkbox {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    margin-right: 10px;
+    border: 2px solid #999;
+    border-radius: 4px;
+    background: white;
+    cursor: pointer;
+    position: relative;
+  }
+
+  .checkbox.checked {
+    background: #4caf50;
+    border-color: #4caf50;
+  }
+
+  .checkbox.checked::after {
+    content: '✓';
+    position: absolute;
+    top: -3px;
+    left: 2px;
+    color: white;
+    font-size: 14px;
+  }
+
   .todo-text {
     flex: 1;
     cursor: pointer;
+  }
+
+  .edit-input {
+    flex: 1;
+    font-size: 16px;
+    padding: 2px 4px;
   }
 
   li.done .todo-text {
@@ -109,16 +141,24 @@
         li.classList.add('done');
       }
 
+      const checkbox = document.createElement('span');
+      checkbox.className = 'checkbox';
+      if (todo.done) {
+        checkbox.classList.add('checked');
+      }
+      checkbox.addEventListener('click', () => toggleTodo(index));
+
       const textSpan = document.createElement('span');
       textSpan.className = 'todo-text';
       textSpan.textContent = todo.text;
-      textSpan.addEventListener('click', () => toggleTodo(index));
+      textSpan.addEventListener('click', () => startEdit(index));
 
       const deleteBtn = document.createElement('button');
       deleteBtn.className = 'delete-btn';
       deleteBtn.textContent = '删除';
       deleteBtn.addEventListener('click', () => deleteTodo(index));
 
+      li.appendChild(checkbox);
       li.appendChild(textSpan);
       li.appendChild(deleteBtn);
       listEl.appendChild(li);
@@ -140,6 +180,44 @@
     todos[index].done = !todos[index].done;
     saveTodos();
     render();
+  }
+
+  // 把某一条的文字替换成一个输入框，让用户可以直接改文字
+  function startEdit(index) {
+    const li = listEl.children[index];
+    const textSpan = li.querySelector('.todo-text');
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'edit-input';
+    input.value = todos[index].text;
+
+    li.replaceChild(input, textSpan);
+    input.focus();
+    input.select();
+
+    let cancelled = false;
+
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        input.blur();
+      } else if (event.key === 'Escape') {
+        cancelled = true;
+        input.blur();
+      }
+    });
+
+    // 不管是按 Enter、按 Escape，还是点击别处失焦，最终都会走到这里
+    input.addEventListener('blur', () => {
+      if (!cancelled) {
+        const newText = input.value.trim();
+        if (newText !== '') {
+          todos[index].text = newText;
+        }
+        saveTodos();
+      }
+      render();
+    });
   }
 
   function deleteTodo(index) {
