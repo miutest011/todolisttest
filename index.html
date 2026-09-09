@@ -21,86 +21,42 @@
     margin-bottom: 28px;
   }
 
-  .input-row {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 24px;
-  }
-
-  #todo-input {
-    flex: 1;
-    padding: 12px 14px;
-    font-size: 15px;
-    border: 1px solid #e5e5e5;
-    border-radius: 8px;
-    outline: none;
-  }
-
-  #todo-input:focus {
-    border-color: #4a90e2;
-  }
-
-  #add-btn {
-    padding: 0 18px;
-    font-size: 15px;
-    color: white;
-    background: #4a90e2;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-  }
-
-  #add-btn:hover {
-    background: #3f7fcc;
-  }
-
-  #category-select {
-    padding: 0 10px;
-    font-size: 14px;
-    border: 1px solid #e5e5e5;
-    border-radius: 8px;
-    background: white;
-    color: #666;
-    outline: none;
-  }
-
-  .filter-tabs {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 16px;
-  }
-
-  .filter-tab {
-    padding: 6px 14px;
-    font-size: 13px;
-    border-radius: 16px;
-    background: #f2f2f2;
-    color: #666;
-    border: none;
-    cursor: pointer;
-  }
-
-  .filter-tab.active {
-    background: #4a90e2;
-    color: white;
-  }
-
-  .category-tag {
-    flex-shrink: 0;
-    font-size: 12px;
-    color: #999;
-    background: #f2f2f2;
-    padding: 2px 8px;
-    border-radius: 10px;
-    margin-right: 8px;
-  }
-
   ul {
     list-style: none;
     padding: 0;
+    margin: 0;
   }
 
-  li {
+  .category {
+    margin-bottom: 20px;
+  }
+
+  .category-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 4px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .arrow {
+    width: 12px;
+    font-size: 11px;
+    color: #bbb;
+  }
+
+  .category-name {
+    font-size: 15px;
+    font-weight: 600;
+  }
+
+  .category-count {
+    font-size: 12px;
+    color: #bbb;
+  }
+
+  .todo-item {
     display: flex;
     align-items: center;
     background: #ffffff;
@@ -108,6 +64,7 @@
     margin-bottom: 6px;
     border-radius: 10px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    cursor: pointer;
   }
 
   .checkbox {
@@ -142,8 +99,12 @@
 
   .todo-text {
     flex: 1;
-    cursor: pointer;
     font-size: 15px;
+  }
+
+  .todo-item.done .todo-text {
+    color: #bbb;
+    text-decoration: line-through;
   }
 
   .edit-input {
@@ -153,31 +114,163 @@
     border: none;
     border-bottom: 1px solid #4a90e2;
     outline: none;
+    background: none;
   }
 
-  li.done .todo-text {
+  .add-task {
+    padding: 12px;
+    font-size: 14px;
+    color: #bbb;
+    border-radius: 10px;
+    cursor: pointer;
+  }
+
+  .add-task:hover {
+    color: #4a90e2;
+    background: #fafafa;
+  }
+
+  .add-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 13px 12px;
+    font-size: 15px;
+    border: 1px solid #4a90e2;
+    border-radius: 10px;
+    outline: none;
+  }
+
+  #new-category-btn {
+    width: 100%;
+    padding: 12px;
+    font-size: 14px;
+    color: #999;
+    background: none;
+    border: 1px dashed #e0e0e0;
+    border-radius: 10px;
+    cursor: pointer;
+  }
+
+  #new-category-btn:hover {
+    color: #4a90e2;
+    border-color: #4a90e2;
+  }
+
+  /* ---- 三个点的下拉菜单 ---- */
+  .menu-anchor {
+    position: relative;
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+
+  .menu-btn {
+    background: none;
+    border: none;
+    color: #bbb;
+    font-size: 16px;
+    line-height: 1;
+    padding: 4px 6px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  .todo-item:hover .menu-btn,
+  .category-header:hover .menu-btn,
+  .menu-btn.open {
+    opacity: 1;
+  }
+
+  .menu-btn:hover {
+    color: #666;
+  }
+
+  .menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    z-index: 10;
+    min-width: 130px;
+    padding: 4px 0;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.14);
+    cursor: default;
+  }
+
+  .menu-item {
+    padding: 8px 14px;
+    font-size: 13px;
+    color: #333;
+    cursor: pointer;
+  }
+
+  .menu-item:hover {
+    background: #f5f7fa;
+  }
+
+  .menu-item.danger {
+    color: #e05252;
+  }
+
+  .menu-label {
+    padding: 6px 14px 2px;
+    font-size: 11px;
+    color: #bbb;
+  }
+
+  .menu-divider {
+    height: 1px;
+    margin: 4px 0;
+    background: #f0f0f0;
+  }
+
+  /* ---- 详情页 ---- */
+  .back-btn {
+    padding: 6px 0;
+    margin-bottom: 16px;
+    font-size: 14px;
+    color: #999;
+    background: none;
+    border: none;
+    cursor: pointer;
+  }
+
+  .back-btn:hover {
+    color: #4a90e2;
+  }
+
+  .detail-card {
+    display: flex;
+    align-items: center;
+    padding: 16px 14px;
+    border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  }
+
+  .detail-title {
+    flex: 1;
+    font-size: 17px;
+  }
+
+  .detail-card.done .detail-title {
     color: #bbb;
     text-decoration: line-through;
   }
 
-  .delete-btn {
-    background: none;
-    border: none;
+  .detail-meta {
+    padding: 14px 4px;
+    font-size: 13px;
+    color: #999;
+  }
+
+  .detail-placeholder {
+    padding: 20px;
+    font-size: 13px;
     color: #ccc;
-    font-size: 18px;
-    line-height: 1;
-    cursor: pointer;
-    opacity: 0;
-    transition: opacity 0.15s, color 0.15s;
-    padding: 4px;
-  }
-
-  li:hover .delete-btn {
-    opacity: 1;
-  }
-
-  .delete-btn:hover {
-    color: #e05252;
+    text-align: center;
+    border: 1px dashed #eee;
+    border-radius: 10px;
   }
 </style>
 </head>
@@ -185,132 +278,502 @@
 
 <h1>我的待办清单</h1>
 
-<div class="input-row">
-  <input id="todo-input" type="text" placeholder="要做什么？">
-  <select id="category-select">
-    <option value="工作">工作</option>
-    <option value="生活">生活</option>
-    <option value="其他">其他</option>
-  </select>
-  <button id="add-btn">添加</button>
-</div>
-
-<div id="filter-tabs" class="filter-tabs"></div>
-
-<ul id="todo-list"></ul>
+<div id="app"></div>
 
 <script>
-  // 目前支持的分类，先固定写死，以后可以改成用户自己添加
-  const CATEGORIES = ['工作', '生活', '其他'];
+  // 第一次打开时默认有这两个清单，之后用户可以自己加
+  const DEFAULT_CATEGORIES = ['工作', '生活'];
 
-  // 当前选中要看哪个分类，'全部' 是特殊值，表示不筛选
-  let currentFilter = '全部';
+  // ---- 所有会变化的状态都放在这里，界面完全由它们决定 ----
+  let categories = loadCategories();   // 清单名字的数组
+  let todos = loadTodos();             // 每一项是 { text, done, category }
+  let collapsed = loadCollapsed();     // 当前被折叠起来的清单名字
+  let addingTaskIn = null;             // 正在哪个清单里输入新任务
+  let addingCategory = false;          // 是否正在输入新清单的名字
+  let editingTaskIndex = null;         // 正在重命名的任务（它在 todos 里的位置）
+  let editingCategory = null;          // 正在重命名的清单名字
+  let openMenuKey = null;              // 哪个三点菜单是展开的，例如 'task-2'、'category-工作'
+  let detailIndex = null;              // 正在看哪条任务的详情页（null = 看列表页）
 
-  // todos 是所有待办事项存在内存里的样子：
-  // 一个数组，每一项是 { text: "任务内容", done: true/false, category: "工作" }
-  let todos = loadTodos();
+  const appEl = document.getElementById('app');
 
-  const inputEl = document.getElementById('todo-input');
-  const addBtnEl = document.getElementById('add-btn');
-  const categorySelectEl = document.getElementById('category-select');
-  const filterTabsEl = document.getElementById('filter-tabs');
-  const listEl = document.getElementById('todo-list');
+  // ---- 读写 localStorage ----
+  function loadCategories() {
+    const saved = localStorage.getItem('categories');
+    return saved ? JSON.parse(saved) : [...DEFAULT_CATEGORIES];
+  }
 
-  // 从 localStorage 读出上次保存的数据，没有就返回空数组
+  function saveCategories() {
+    localStorage.setItem('categories', JSON.stringify(categories));
+  }
+
   function loadTodos() {
     const saved = localStorage.getItem('todos');
     const parsed = saved ? JSON.parse(saved) : [];
 
-    // 老数据可能是加分类功能之前存的，没有 category 字段，给它们补一个默认值
     parsed.forEach((todo) => {
+      // 老数据可能没有 category 字段，放进第一个清单
       if (!todo.category) {
-        todo.category = '其他';
+        todo.category = categories[0];
+      }
+      // 任务的分类如果不在清单列表里，补一个清单，免得任务看不见
+      if (!categories.includes(todo.category)) {
+        categories.push(todo.category);
+        saveCategories();
       }
     });
 
     return parsed;
   }
 
-  // 把当前的 todos 存进 localStorage，转成文字才能存
   function saveTodos() {
     localStorage.setItem('todos', JSON.stringify(todos));
   }
 
-  // 把筛选标签（全部/工作/生活/其他）画出来，并高亮当前选中的那个
-  function renderFilterTabs() {
-    filterTabsEl.innerHTML = '';
-    const allTabs = ['全部', ...CATEGORIES];
+  function loadCollapsed() {
+    const saved = localStorage.getItem('collapsed');
+    return saved ? JSON.parse(saved) : [];
+  }
 
-    allTabs.forEach((name) => {
-      const tab = document.createElement('button');
-      tab.className = 'filter-tab';
-      if (name === currentFilter) {
-        tab.classList.add('active');
+  function saveCollapsed() {
+    localStorage.setItem('collapsed', JSON.stringify(collapsed));
+  }
+
+  // ---- 画界面 ----
+  // 任何操作都只做两件事：改上面的状态变量 → 调用 render()
+  function render() {
+    appEl.innerHTML = '';
+
+    if (detailIndex !== null) {
+      appEl.appendChild(createDetailPage(detailIndex));
+    } else {
+      categories.forEach((category) => {
+        appEl.appendChild(createCategorySection(category));
+      });
+      appEl.appendChild(createNewCategoryRow());
+    }
+
+    // 页面重画会让输入框消失，画完之后要把光标重新放回去
+    const focusEl = appEl.querySelector('.add-input, .edit-input');
+    if (focusEl) {
+      focusEl.focus();
+      if (focusEl.classList.contains('edit-input')) {
+        focusEl.select();
       }
-      tab.textContent = name;
-      tab.addEventListener('click', () => {
-        currentFilter = name;
+    }
+  }
+
+  // 一个清单区块：标题栏 + 任务列表 + "添加任务"那一行
+  function createCategorySection(category) {
+    const section = document.createElement('section');
+    section.className = 'category';
+    section.appendChild(createCategoryHeader(category));
+
+    // 折叠状态下就不画下面的内容了
+    if (!collapsed.includes(category)) {
+      const list = document.createElement('ul');
+      todos.forEach((todo, index) => {
+        if (todo.category === category) {
+          list.appendChild(createTodoItem(todo, index));
+        }
+      });
+      section.appendChild(list);
+      section.appendChild(createAddTaskRow(category));
+    }
+
+    return section;
+  }
+
+  // 清单标题栏：点名字改名，点其它地方折叠/展开，右边是三点菜单
+  function createCategoryHeader(category) {
+    const header = document.createElement('div');
+    header.className = 'category-header';
+    header.addEventListener('click', () => {
+      if (closeMenuIfOpen()) return;
+      toggleCollapse(category);
+    });
+
+    const arrow = document.createElement('span');
+    arrow.className = 'arrow';
+    arrow.textContent = collapsed.includes(category) ? '▸' : '▾';
+    header.appendChild(arrow);
+
+    if (editingCategory === category) {
+      header.appendChild(createRenameInput(
+        category,
+        (newName) => {
+          renameCategory(category, newName);
+          editingCategory = null;
+          render();
+        },
+        () => {
+          editingCategory = null;
+          render();
+        }
+      ));
+      return header;
+    }
+
+    const name = document.createElement('span');
+    name.className = 'category-name';
+    name.textContent = category;
+    name.addEventListener('click', (event) => {
+      event.stopPropagation();       // 不要触发标题栏的折叠
+      editingCategory = category;
+      render();
+    });
+
+    const remaining = todos.filter((todo) => todo.category === category && !todo.done).length;
+    const count = document.createElement('span');
+    count.className = 'category-count';
+    count.textContent = remaining > 0 ? remaining : '';
+
+    header.append(name, count, createCategoryMenu(category));
+    return header;
+  }
+
+  // 一条任务：勾选框 + 文字 + 三点菜单，点空白处进详情页
+  function createTodoItem(todo, index) {
+    const li = document.createElement('li');
+    li.className = 'todo-item';
+    if (todo.done) {
+      li.classList.add('done');
+    }
+    li.addEventListener('click', () => {
+      if (closeMenuIfOpen()) return;
+      detailIndex = index;
+      render();
+    });
+
+    const checkbox = createCheckbox(todo, index);
+
+    if (editingTaskIndex === index) {
+      li.append(checkbox, createRenameInput(
+        todo.text,
+        (newText) => {
+          renameTodo(index, newText);
+          editingTaskIndex = null;
+          render();
+        },
+        () => {
+          editingTaskIndex = null;
+          render();
+        }
+      ));
+      return li;
+    }
+
+    const textSpan = document.createElement('span');
+    textSpan.className = 'todo-text';
+    textSpan.textContent = todo.text;
+    textSpan.addEventListener('click', (event) => {
+      event.stopPropagation();       // 不要进详情页
+      editingTaskIndex = index;
+      render();
+    });
+
+    li.append(checkbox, textSpan, createTodoMenu(index));
+    return li;
+  }
+
+  function createCheckbox(todo, index) {
+    const checkbox = document.createElement('span');
+    checkbox.className = 'checkbox';
+    if (todo.done) {
+      checkbox.classList.add('checked');
+    }
+    checkbox.addEventListener('click', (event) => {
+      event.stopPropagation();       // 不要进详情页
+      toggleTodo(index);
+    });
+    return checkbox;
+  }
+
+  // 没在输入时是一行灰色的"+ 添加任务"，点了之后变成输入框
+  function createAddTaskRow(category) {
+    if (addingTaskIn !== category) {
+      const row = document.createElement('div');
+      row.className = 'add-task';
+      row.textContent = '+ 添加任务';
+      row.addEventListener('click', () => {
+        if (closeMenuIfOpen()) return;
+        addingTaskIn = category;
         render();
       });
-      filterTabsEl.appendChild(tab);
+      return row;
+    }
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'add-input';
+    input.placeholder = '输入任务，回车添加';
+
+    // render() 会把输入框删掉重画，删除时浏览器也会触发一次 blur，
+    // 这个开关用来区分"用户点到别处了"和"是我们自己重画导致的"
+    let skipBlur = false;
+
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        skipBlur = true;
+        const text = input.value.trim();
+        if (text === '') {
+          addingTaskIn = null;   // 空着按回车 = 结束添加
+        } else {
+          todos.push({ text: text, done: false, category: category });
+          saveTodos();           // addingTaskIn 不变，方便连续添加下一条
+        }
+        render();
+      } else if (event.key === 'Escape') {
+        skipBlur = true;
+        addingTaskIn = null;
+        render();
+      }
     });
+
+    input.addEventListener('blur', () => {
+      if (skipBlur) return;
+      addingTaskIn = null;
+      render();
+    });
+
+    return input;
   }
 
-  // 把 todos 数组重新画成页面上的列表
-  // 每次数据变化后都要调用一次，页面才会更新
-  function render() {
-    renderFilterTabs();
-    listEl.innerHTML = '';
+  // 底部的"+ 新建清单"，点了之后同样变成输入框
+  function createNewCategoryRow() {
+    if (!addingCategory) {
+      const btn = document.createElement('button');
+      btn.id = 'new-category-btn';
+      btn.textContent = '+ 新建清单';
+      btn.addEventListener('click', () => {
+        if (closeMenuIfOpen()) return;
+        addingCategory = true;
+        render();
+      });
+      return btn;
+    }
 
-    todos.forEach((todo, index) => {
-      // 当前分类如果不是"全部"，就跳过不属于这个分类的任务
-      if (currentFilter !== '全部' && todo.category !== currentFilter) {
-        return;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'add-input';
+    input.placeholder = '清单名称，回车创建';
+
+    let skipBlur = false;
+
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        skipBlur = true;
+        const name = input.value.trim();
+        // 名字为空或者已经有同名清单，就什么都不做
+        if (name !== '' && !categories.includes(name)) {
+          categories.push(name);
+          saveCategories();
+        }
+        addingCategory = false;
+        render();
+      } else if (event.key === 'Escape') {
+        skipBlur = true;
+        addingCategory = false;
+        render();
       }
-
-      const li = document.createElement('li');
-      li.dataset.index = index;
-      if (todo.done) {
-        li.classList.add('done');
-      }
-
-      const checkbox = document.createElement('span');
-      checkbox.className = 'checkbox';
-      if (todo.done) {
-        checkbox.classList.add('checked');
-      }
-      checkbox.addEventListener('click', () => toggleTodo(index));
-
-      const categoryTag = document.createElement('span');
-      categoryTag.className = 'category-tag';
-      categoryTag.textContent = todo.category;
-
-      const textSpan = document.createElement('span');
-      textSpan.className = 'todo-text';
-      textSpan.textContent = todo.text;
-      textSpan.addEventListener('click', () => startEdit(index));
-
-      const deleteBtn = document.createElement('button');
-      deleteBtn.className = 'delete-btn';
-      deleteBtn.textContent = '×';
-      deleteBtn.addEventListener('click', () => deleteTodo(index));
-
-      li.appendChild(checkbox);
-      li.appendChild(categoryTag);
-      li.appendChild(textSpan);
-      li.appendChild(deleteBtn);
-      listEl.appendChild(li);
     });
+
+    input.addEventListener('blur', () => {
+      if (skipBlur) return;
+      addingCategory = false;
+      render();
+    });
+
+    return input;
   }
 
-  function addTodo() {
-    const text = inputEl.value.trim();
-    if (text === '') return;
+  // 重命名用的输入框：回车或点别处保存，Esc 取消。清单和任务共用
+  function createRenameInput(currentText, onCommit, onCancel) {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'edit-input';
+    input.value = currentText;
 
-    todos.push({ text: text, done: false, category: categorySelectEl.value });
-    inputEl.value = '';
+    // 回车保存、Esc 取消、点到别处也算保存。
+    // finished 保证只结束一次：回车结束后页面会重画、输入框被删掉，
+    // 浏览器还会再触发一次 blur，这时候要忽略掉
+    let finished = false;
 
-    saveTodos();
+    function finish(cancelled) {
+      if (finished) return;
+      finished = true;
+      if (cancelled) {
+        onCancel();
+      } else {
+        onCommit(input.value.trim());
+      }
+    }
+
+    input.addEventListener('click', (event) => event.stopPropagation());
+
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        finish(false);
+      } else if (event.key === 'Escape') {
+        finish(true);
+      }
+    });
+
+    input.addEventListener('blur', () => finish(false));
+
+    return input;
+  }
+
+  // ---- 三点菜单 ----
+  // key 用来标记"哪个菜单"，items 是菜单里的每一项
+  function createMenu(key, items) {
+    const anchor = document.createElement('div');
+    anchor.className = 'menu-anchor';
+
+    const btn = document.createElement('button');
+    btn.className = 'menu-btn';
+    btn.textContent = '⋯';
+    if (openMenuKey === key) {
+      btn.classList.add('open');
+    }
+    btn.addEventListener('click', (event) => {
+      event.stopPropagation();       // 不要触发整行的点击
+      openMenuKey = openMenuKey === key ? null : key;
+      render();
+    });
+    anchor.appendChild(btn);
+
+    if (openMenuKey === key) {
+      const menu = document.createElement('div');
+      menu.className = 'menu';
+      menu.addEventListener('click', (event) => event.stopPropagation());
+
+      items.forEach((item) => {
+        if (item.type === 'label') {
+          const label = document.createElement('div');
+          label.className = 'menu-label';
+          label.textContent = item.text;
+          menu.appendChild(label);
+        } else if (item.type === 'divider') {
+          const divider = document.createElement('div');
+          divider.className = 'menu-divider';
+          menu.appendChild(divider);
+        } else {
+          const row = document.createElement('div');
+          row.className = item.danger ? 'menu-item danger' : 'menu-item';
+          row.textContent = item.text;
+          row.addEventListener('click', () => {
+            openMenuKey = null;
+            item.action();
+          });
+          menu.appendChild(row);
+        }
+      });
+
+      anchor.appendChild(menu);
+    }
+
+    return anchor;
+  }
+
+  function createCategoryMenu(category) {
+    const position = categories.indexOf(category);
+    const items = [
+      { text: '重命名', action: () => { editingCategory = category; render(); } }
+    ];
+
+    if (position > 0) {
+      items.push({ text: '上移', action: () => moveCategory(category, -1) });
+    }
+    if (position < categories.length - 1) {
+      items.push({ text: '下移', action: () => moveCategory(category, 1) });
+    }
+
+    items.push({ type: 'divider' });
+    items.push({ text: '删除清单', danger: true, action: () => deleteCategory(category) });
+
+    return createMenu('category-' + category, items);
+  }
+
+  function createTodoMenu(index) {
+    const todo = todos[index];
+    const items = [
+      { text: '重命名', action: () => { editingTaskIndex = index; render(); } },
+      { text: todo.done ? '标记为未完成' : '标记为完成', action: () => toggleTodo(index) }
+    ];
+
+    // 其它清单，用来做"移动到"
+    const others = categories.filter((name) => name !== todo.category);
+    if (others.length > 0) {
+      items.push({ type: 'divider' });
+      items.push({ type: 'label', text: '移动到' });
+      others.forEach((name) => {
+        items.push({ text: name, action: () => moveTodo(index, name) });
+      });
+    }
+
+    items.push({ type: 'divider' });
+    items.push({ text: '删除任务', danger: true, action: () => deleteTodo(index) });
+
+    return createMenu('task-' + index, items);
+  }
+
+  // 点页面上任何别的地方都关掉菜单。
+  // 返回 true 表示"这一下只是用来关菜单的"，调用方就不要再做别的事了
+  function closeMenuIfOpen() {
+    if (openMenuKey === null) return false;
+    openMenuKey = null;
+    render();
+    return true;
+  }
+
+  document.addEventListener('click', () => {
+    closeMenuIfOpen();
+  });
+
+  // ---- 详情页 ----
+  // 目前只有标题和所属清单，备注、日期等以后加在这里
+  function createDetailPage(index) {
+    const todo = todos[index];
+    const page = document.createElement('div');
+
+    const back = document.createElement('button');
+    back.className = 'back-btn';
+    back.textContent = '← 返回';
+    back.addEventListener('click', () => {
+      detailIndex = null;
+      render();
+    });
+
+    const card = document.createElement('div');
+    card.className = todo.done ? 'detail-card done' : 'detail-card';
+
+    const title = document.createElement('span');
+    title.className = 'detail-title';
+    title.textContent = todo.text;
+
+    card.append(createCheckbox(todo, index), title);
+
+    const meta = document.createElement('div');
+    meta.className = 'detail-meta';
+    meta.textContent = '清单：' + todo.category;
+
+    const placeholder = document.createElement('div');
+    placeholder.className = 'detail-placeholder';
+    placeholder.textContent = '备注、截止日期等功能以后加在这里';
+
+    page.append(back, card, meta, placeholder);
+    return page;
+  }
+
+  // ---- 各种操作 ----
+  function toggleCollapse(category) {
+    if (collapsed.includes(category)) {
+      collapsed = collapsed.filter((name) => name !== category);
+    } else {
+      collapsed.push(category);
+    }
+    saveCollapsed();
     render();
   }
 
@@ -320,54 +783,77 @@
     render();
   }
 
-  // 把某一条的文字替换成一个输入框，让用户可以直接改文字
-  function startEdit(index) {
-    const li = listEl.querySelector(`li[data-index="${index}"]`);
-    const textSpan = li.querySelector('.todo-text');
+  function renameTodo(index, newText) {
+    if (newText !== '') {
+      todos[index].text = newText;
+      saveTodos();
+    }
+  }
 
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'edit-input';
-    input.value = todos[index].text;
-
-    li.replaceChild(input, textSpan);
-    input.focus();
-    input.select();
-
-    let cancelled = false;
-
-    input.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter') {
-        input.blur();
-      } else if (event.key === 'Escape') {
-        cancelled = true;
-        input.blur();
-      }
-    });
-
-    // 不管是按 Enter、按 Escape，还是点击别处失焦，最终都会走到这里
-    input.addEventListener('blur', () => {
-      if (!cancelled) {
-        const newText = input.value.trim();
-        if (newText !== '') {
-          todos[index].text = newText;
-        }
-        saveTodos();
-      }
-      render();
-    });
+  function moveTodo(index, newCategory) {
+    todos[index].category = newCategory;
+    saveTodos();
+    render();
   }
 
   function deleteTodo(index) {
     todos.splice(index, 1);
     saveTodos();
+    detailIndex = null;      // 万一是在详情页删的，回到列表页
     render();
   }
 
-  addBtnEl.addEventListener('click', addTodo);
-  inputEl.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') addTodo();
-  });
+  function renameCategory(oldName, newName) {
+    // 名字为空、没改、或者和别的清单重名，都不动
+    if (newName === '' || newName === oldName || categories.includes(newName)) return;
+
+    categories[categories.indexOf(oldName)] = newName;
+    // 里面的任务、折叠状态都记的是清单名字，要一起改
+    todos.forEach((todo) => {
+      if (todo.category === oldName) {
+        todo.category = newName;
+      }
+    });
+    collapsed = collapsed.map((name) => (name === oldName ? newName : name));
+
+    saveCategories();
+    saveTodos();
+    saveCollapsed();
+  }
+
+  function moveCategory(category, offset) {
+    const from = categories.indexOf(category);
+    const to = from + offset;
+    if (to < 0 || to >= categories.length) return;
+
+    // 和相邻的那个清单交换位置
+    categories[from] = categories[to];
+    categories[to] = category;
+
+    saveCategories();
+    render();
+  }
+
+  function deleteCategory(category) {
+    const count = todos.filter((todo) => todo.category === category).length;
+
+    // 清单里还有任务的话，先问一下用户
+    if (count > 0) {
+      const ok = confirm(`清单「${category}」里有 ${count} 条任务（含已完成），删除清单会把它们一起删掉，确定吗？`);
+      if (!ok) return;
+    }
+
+    categories = categories.filter((name) => name !== category);
+    todos = todos.filter((todo) => todo.category !== category);
+    collapsed = collapsed.filter((name) => name !== category);
+    if (addingTaskIn === category) addingTaskIn = null;
+    if (editingCategory === category) editingCategory = null;
+
+    saveCategories();
+    saveTodos();
+    saveCollapsed();
+    render();
+  }
 
   render();
 </script>
