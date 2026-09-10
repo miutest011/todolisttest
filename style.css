@@ -113,37 +113,38 @@
     cursor: pointer;
   }
 
-  /* 小方框，比原来的圆点收敛一些 */
+  /* 小方框，比原来的圆点收敛一些。
+     用 flex 居中里面的图标，不用手动去凑位置 */
   .checkbox {
     width: 17px;
     height: 17px;
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     margin-right: 12px;
     border: 1.5px solid #d3d3d3;
     border-radius: 4px;
     background: white;
     cursor: pointer;
-    position: relative;
   }
 
   .checkbox:hover {
     border-color: #999;
   }
 
-  /* 已完成的用灰色的勾，不再用蓝色实心块。
-     做完的事已经不是重点了，不该比没做的更抢眼 */
-  .checkbox.checked {
+  /* 已完成用灰色的勾、已放弃用灰色的叉，都不再用蓝色实心块。
+     做完或放弃的事已经不是重点了，不该比没做的更抢眼 */
+  .checkbox.done,
+  .checkbox.abandoned {
     background: #fafafa;
     border-color: #dcdcdc;
+    color: #a8a8a8;      /* 图标是 currentColor，跟着这里走 */
   }
 
-  .checkbox.checked::after {
-    content: '✓';
-    position: absolute;
-    top: -4px;
-    left: 2px;
-    color: #b0b0b0;
-    font-size: 13px;
+  .box-icon {
+    width: 11px;
+    height: 11px;
   }
 
   .todo-text {
@@ -151,9 +152,41 @@
     font-size: 14px;
   }
 
-  .todo-item.done .todo-text {
+  .todo-item.done .todo-text,
+  .todo-item.abandoned .todo-text {
     color: #bbb;
     text-decoration: line-through;
+  }
+
+  /* ---- "已完成 / 已放弃"折叠分组 ---- */
+  .sub-group {
+    margin-top: 4px;
+  }
+
+  .sub-group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 4px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .sub-group-title {
+    font-size: 12px;
+    color: #aaa;
+  }
+
+  .sub-group-header:hover .sub-group-title {
+    color: #777;
+  }
+
+  /* 分组里的任务比正常任务更收敛一点，它们已经不是重点了 */
+  .sub-group .todo-item {
+    padding: 11px 12px;
+    box-shadow: none;
+    background: #fafafa;
   }
 
   .edit-input {
@@ -268,15 +301,21 @@
 
   .pin-btn {
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     padding: 4px 6px;
-    font-size: 15px;
-    line-height: 1;
     color: #c8c8c8;
     background: none;
     border: none;
     cursor: pointer;
     opacity: 0.9;
     transition: opacity 0.15s, color 0.15s;
+  }
+
+  .btn-icon {
+    width: 14px;
+    height: 14px;
   }
 
   /* 已置顶的用更深的灰色，一眼能看出哪些被置顶了 */
@@ -389,7 +428,8 @@
     font-size: 17px;
   }
 
-  .detail-card.done .detail-title {
+  .detail-card.done .detail-title,
+  .detail-card.abandoned .detail-title {
     color: #bbb;
     text-decoration: line-through;
   }

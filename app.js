@@ -104,6 +104,7 @@ let openMenuKey = null;     // 哪个三点菜单是展开的，例如 'task-2'�
 let detailIndex = null;     // 正在看哪条任务的详情页（null = 看列表页）
 let editingDueFor = null;   // 正在给哪条任务设置截止时间
 let attachmentError = null; // 附件保存失败时的提示文字
+let expandedGroups = [];    // 哪些"已完成/已放弃"分组是展开的，只记在内存里
 
 // 把"临时"的界面状态清空（数据状态不动）
 function resetViewState() {
@@ -115,6 +116,7 @@ function resetViewState() {
   detailIndex = null;
   editingDueFor = null;
   attachmentError = null;
+  expandedGroups = [];
 }
 
 // 启动：把应用挂到某个页面元素上，读出数据，画出来
@@ -153,6 +155,14 @@ function loadTodos() {
     }
     // 加时间功能之前存的老任务没有这几个字段，补上默认值，
     // 否则详情页读到 undefined 会出问题
+    // 任务状态从"完成/未完成"两态改成了三态（未完成 / 已完成 / 已放弃）。
+    // 用一个 status 字段而不是再加一个 abandoned 布尔值，
+    // 是为了让"既完成又放弃"这种自相矛盾的状态根本没法出现
+    if (!('status' in todo)) {
+      todo.status = todo.done ? 'done' : 'active';
+    }
+    delete todo.done;      // 老字段清掉，免得两个地方都记状态、以后对不上
+
     if (!('createdAt' in todo)) todo.createdAt = null;
     if (!('dueAt' in todo)) todo.dueAt = null;
     if (!('remindBefore' in todo)) todo.remindBefore = null;
@@ -263,10 +273,12 @@ function useLongPressDelay(ms) {  // 测试时改成 0，免得每条测试都�
   longPressDelay = ms;
 }
 
-// 清单里任务的显示顺序：置顶的在最上面，然后是没做完的，做完的沉到最下面。
+// 清单里任务的显示顺序：置顶的在最上面，然后是没做完的，
+// 已完成和已放弃的收进各自的折叠分组，排在最后。
 // 列表渲染和拖拽算落点都用这一个函数，免得两边规则不一致导致拖动错位
 function displayOrderKey(todo) {
-  if (todo.done) return 2;
+  if (todo.status === 'done') return 2;
+  if (todo.status === 'abandoned') return 3;
   return todo.pinned ? 0 : 1;
 }
 
@@ -446,8 +458,6 @@ function createCategorySection(category) {
 
   // 折叠状态下就不画下面的内容了
   if (!collapsed.includes(category)) {
-    const list = document.createElement('ul');
-
     // 先挑出这个清单里的任务，记住它们在 todos 里的真实位置
     const items = [];
     todos.forEach((todo, index) => {
@@ -456,17 +466,68 @@ function createCategorySection(category) {
       }
     });
 
-    // 置顶的在上、做完的沉底。sort 是稳定的，所以同一档之间保持原有顺序
+    // 置顶的在上。sort 是稳定的，所以同一档之间保持原有顺序
     items.sort((a, b) => compareForDisplay(a.todo, b.todo));
 
-    items.forEach((item) => {
-      list.appendChild(createTodoItem(item.todo, item.index));
-    });
+    // 没做完的直接铺在清单里，做完的和放弃的各自收进折叠分组，
+    // 这样清单再长也不会被历史记录撑爆
+    const list = document.createElement('ul');
+    items
+      .filter((item) => item.todo.status === 'active')
+      .forEach((item) => list.appendChild(createTodoItem(item.todo, item.index)));
+
     section.appendChild(list);
     section.appendChild(createAddTaskRow(category));
+    section.appendChild(createSubGroup(category, 'done', '已完成',
+      items.filter((item) => item.todo.status === 'done')));
+    section.appendChild(createSubGroup(category, 'abandoned', '已放弃',
+      items.filter((item) => item.todo.status === 'abandoned')));
   }
 
   return section;
+}
+
+// "已完成 / 已放弃"这样的折叠分组。一条都没有时不显示。
+// 展开状态只记在内存里，不存起来 —— 每次打开默认收起，
+// 因为这个分组本来就是为了让清单看起来短
+function createSubGroup(category, kind, label, items) {
+  const box = document.createElement('div');
+  if (items.length === 0) return box;
+
+  box.className = 'sub-group';
+
+  const key = category + '/' + kind;
+  const expanded = expandedGroups.includes(key);
+
+  const header = document.createElement('div');
+  header.className = 'sub-group-header';
+  header.addEventListener('click', () => {
+    if (shouldIgnoreClick()) return;
+    if (closeMenuIfOpen()) return;
+    expandedGroups = expanded
+      ? expandedGroups.filter((name) => name !== key)
+      : expandedGroups.concat(key);
+    render();
+  });
+
+  const arrow = document.createElement('span');
+  arrow.className = 'arrow';
+  arrow.textContent = expanded ? '▾' : '▸';
+
+  const title = document.createElement('span');
+  title.className = 'sub-group-title';
+  title.textContent = `${label} ${items.length}`;
+
+  header.append(arrow, title);
+  box.appendChild(header);
+
+  if (expanded) {
+    const list = document.createElement('ul');
+    items.forEach((item) => list.appendChild(createTodoItem(item.todo, item.index)));
+    box.appendChild(list);
+  }
+
+  return box;
 }
 
 // 清单标题栏：点名字改名，点其它地方折叠/展开，右边是三点菜单
@@ -515,7 +576,10 @@ function createCategoryHeader(category, section) {
   name.textContent = category;
   // 这里不再拦点击：让它冒泡到标题栏，统一是折叠/展开。改名走 ⋯ 菜单
 
-  const remaining = todos.filter((todo) => todo.category === category && !todo.done).length;
+  // 标题上的数字只数还要做的，已完成和已放弃的都不算
+  const remaining = todos.filter(
+    (todo) => todo.category === category && todo.status === 'active'
+  ).length;
   const count = document.createElement('span');
   count.className = 'category-count';
   count.textContent = remaining > 0 ? remaining : '';
@@ -529,8 +593,8 @@ function createTodoItem(todo, index) {
   const li = document.createElement('li');
   li.className = 'todo-item';
   li.dataset.index = index;      // 拖拽松手时靠它认出这是哪一条任务
-  if (todo.done) {
-    li.classList.add('done');
+  if (todo.status !== 'active') {
+    li.classList.add(todo.status);     // done 或 abandoned
   }
   // 点这一行的任何地方（文字也算）都是进详情页。
   // 改名放在详情页和 ⋯ 菜单里 —— 一行里塞两个功能，手机上必然误触
@@ -568,8 +632,8 @@ function createTodoItem(todo, index) {
   // 这里不再拦点击：让它冒泡到整行，统一进详情页
 
   li.append(checkbox, textSpan);
-  // 做完的任务永远沉在最下面，置顶按钮对它没有意义，就不显示了
-  if (!todo.done) {
+  // 已完成和已放弃的都收在分组里，置顶按钮对它们没有意义，就不显示了
+  if (todo.status === 'active') {
     li.appendChild(createPinButton(index));
   }
   li.appendChild(createTodoMenu(index));
@@ -582,7 +646,7 @@ function createPinButton(index) {
   const todo = todos[index];
   const btn = document.createElement('button');
   btn.className = todo.pinned ? 'pin-btn pinned' : 'pin-btn';
-  btn.textContent = '↑';
+  btn.appendChild(createIcon('arrowUp', 'btn-icon'));
   btn.title = todo.pinned ? '取消置顶' : '置顶';
   btn.addEventListener('click', (event) => {
     event.stopPropagation();     // 不要进详情页
@@ -591,11 +655,43 @@ function createPinButton(index) {
   return btn;
 }
 
+// ---- 图标 ----
+// 用 SVG 画，不用文字符号（✓ ✕ ↑）。
+// 文字符号的位置随字体基线浮动，只能用 top: -4px 这种负数硬凑，
+// 换个设备就又歪了 —— SVG 是画出来的，配合 flex 居中永远是正的。
+//
+// 下面这些线条画法（24×24 画布、圆头圆角、只描边不填充）是 Feather / Lucide
+// 这类免费图标库的通用规格，想换别的图标，去它们网站复制一段 path 贴进来就行
+const ICON_PATHS = {
+  check: 'M20 6L9 17l-5-5',
+  cross: 'M18 6L6 18M6 6l12 12',
+  arrowUp: 'M12 19V5M5 12l7-7 7 7'
+};
+
+function createIcon(name, className) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');   // 跟着 CSS 的 color 走
+  svg.setAttribute('stroke-width', '2.5');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('class', className);
+
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', ICON_PATHS[name]);
+  svg.appendChild(path);
+
+  return svg;
+}
+
 function createCheckbox(todo, index) {
   const checkbox = document.createElement('span');
   checkbox.className = 'checkbox';
-  if (todo.done) {
-    checkbox.classList.add('checked');
+  // 已完成显示灰色的勾，已放弃显示灰色的叉
+  if (todo.status !== 'active') {
+    checkbox.classList.add(todo.status);
+    checkbox.appendChild(createIcon(todo.status === 'done' ? 'check' : 'cross', 'box-icon'));
   }
   checkbox.addEventListener('click', (event) => {
     event.stopPropagation();       // 不要进详情页
@@ -804,9 +900,18 @@ function createCategoryMenu(category) {
 function createTodoMenu(index) {
   const todo = todos[index];
   const items = [
-    { text: '重命名', action: () => { editingTaskIndex = index; render(); } },
-    { text: todo.done ? '标记为未完成' : '标记为完成', action: () => toggleTodo(index) }
+    { text: '重命名', action: () => { editingTaskIndex = index; render(); } }
   ];
+
+  if (todo.status === 'active') {
+    items.push({ text: '标记为完成', action: () => setStatus(index, 'done') });
+    items.push({ text: '放弃这条', action: () => abandonTodo(index) });
+  } else if (todo.status === 'done') {
+    items.push({ text: '标记为未完成', action: () => setStatus(index, 'active') });
+    items.push({ text: '放弃这条', action: () => abandonTodo(index) });
+  } else {
+    items.push({ text: '重新拾起', action: () => setStatus(index, 'active') });
+  }
 
   // 其它清单，用来做"移动到"
   const others = categories.filter((name) => name !== todo.category);
@@ -852,7 +957,7 @@ function createDetailPage(index) {
   });
 
   const card = document.createElement('div');
-  card.className = todo.done ? 'detail-card done' : 'detail-card';
+  card.className = todo.status === 'active' ? 'detail-card' : 'detail-card ' + todo.status;
   card.append(createCheckbox(todo, index));
 
   // 详情页里也能直接改名：和列表里共用 editingTaskIndex 这个状态
@@ -878,7 +983,7 @@ function createDetailPage(index) {
       render();
     });
     card.appendChild(title);
-    if (!todo.done) {
+    if (todo.status === 'active') {
       card.appendChild(createPinButton(index));
     }
     card.appendChild(createTodoMenu(index));
@@ -886,6 +991,8 @@ function createDetailPage(index) {
 
   page.append(back, card);
 
+  const statusLabels = { active: '未完成', done: '已完成', abandoned: '已放弃' };
+  page.appendChild(createDetailRow('状态', statusLabels[todo.status]));
   page.appendChild(createDetailRow('清单', todo.category));
   // 开始时间 = 创建这条任务的时间，只在详情页显示
   page.appendChild(createDetailRow('开始时间', todo.createdAt ? formatDateTime(todo.createdAt) : '未记录'));
@@ -1148,7 +1255,7 @@ function addTodo(category, text) {
 
   todos.push({
     text: trimmed,
-    done: false,
+    status: 'active',                   // active / done / abandoned
     category: category,
     createdAt: nowFn().toISOString(),   // 创建时把当前系统时间记下来
     dueAt: null,                        // 截止时间，用户在详情页里设
@@ -1184,12 +1291,24 @@ function toggleCollapse(category) {
   render();
 }
 
+// 点勾选框：没做完的标记为完成；已完成或已放弃的都恢复成未完成
 function toggleTodo(index) {
   const todo = todos[index];
-  todo.done = !todo.done;
+  setStatus(index, todo.status === 'active' ? 'done' : 'active');
+}
 
-  // 做完了就沉到清单最下面，置顶自然也就没意义了，顺手取消掉
-  if (todo.done) {
+// 放弃：不删除，只是收进"已放弃"分组。
+// 留着是为了知道自己尝试过，哪天想重新捡起来也还在
+function abandonTodo(index) {
+  setStatus(index, 'abandoned');
+}
+
+function setStatus(index, status) {
+  const todo = todos[index];
+  todo.status = status;
+
+  // 已完成和已放弃都会沉到分组里去，置顶就没意义了，顺手取消掉
+  if (status !== 'active') {
     todo.pinned = false;
   }
 
@@ -1260,7 +1379,7 @@ function checkReminders() {
     if (!todo.dueAt) return;             // 没设截止时间
     if (todo.remindBefore === null) return;  // 用户选了不提醒
     if (todo.reminded) return;           // 已经提醒过了，不重复打扰
-    if (todo.done) return;               // 已完成的不用提醒
+    if (todo.status !== 'active') return;    // 做完的和放弃的都不用提醒
 
     const fireAt = new Date(todo.dueAt).getTime() - todo.remindBefore * 60 * 1000;
     if (now < fireAt) return;            // 还没到时候

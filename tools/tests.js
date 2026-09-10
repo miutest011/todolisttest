@@ -111,6 +111,32 @@ function menuItemNamed(root, text) {
   return [...root.querySelectorAll('.menu-item')].find((el) => el.textContent === text);
 }
 
+function itemNamed(root, text) {
+  return [...root.querySelectorAll('.todo-item')]
+    .find((li) => li.querySelector('.todo-text').textContent === text);
+}
+
+// 展开"已完成 / 已放弃"折叠分组
+function expandGroup(root, label) {
+  const header = [...root.querySelectorAll('.sub-group-header')]
+    .find((el) => el.textContent.includes(label));
+  if (header) click(header);
+  return header;
+}
+
+function groupHeader(root, label) {
+  return [...root.querySelectorAll('.sub-group-header')]
+    .find((el) => el.textContent.includes(label));
+}
+
+// 按左边的标签取详情页某一行的内容。
+// 别用"第几行"去取 —— 加一行新字段就会把测试全打乱
+function detailValue(root, label) {
+  const row = [...root.querySelectorAll('.detail-row')]
+    .find((el) => el.querySelector('.detail-label').textContent === label);
+  return row ? row.querySelector('.detail-value').textContent : null;
+}
+
 function stored(storage, key) {
   const value = storage.getItem(key);
   return value === null ? null : JSON.parse(value);
@@ -140,8 +166,8 @@ test('添加任务：存进数组，也写进存储', () => {
 
   assertEqual(todos.length, 1, '应该有一条任务');
   assertEqual(
-    pick(todos[0], ['text', 'done', 'category']),
-    { text: '写周报', done: false, category: '工作' },
+    pick(todos[0], ['text', 'status', 'category']),
+    { text: '写周报', status: 'active', category: '工作' },
     '内存里的数据不对'
   );
   assertEqual(stored(storage, 'todos'), todos, '存储里的数据应该和内存完全一致');
@@ -168,14 +194,14 @@ test('添加任务：自动去掉首尾空格', () => {
 // ========== 完成 / 重命名 / 移动 / 删除任务 ==========
 
 test('勾选任务：切换完成状态并保存', () => {
-  const { storage } = setup({ categories: ['工作'], todos: [{ text: '写周报', done: false, category: '工作' }] });
+  const { storage } = setup({ categories: ['工作'], todos: [{ text: '写周报', status: 'active', category: '工作' }] });
 
   toggleTodo(0);
-  assertEqual(todos[0].done, true, '第一次点击应该变成已完成');
-  assertEqual(stored(storage, 'todos')[0].done, true, '完成状态应该被保存');
+  assertEqual(todos[0].status, 'done', '第一次点击应该变成已完成');
+  assertEqual(stored(storage, 'todos')[0].status, 'done', '完成状态应该被保存');
 
   toggleTodo(0);
-  assertEqual(todos[0].done, false, '再点一次应该变回未完成');
+  assertEqual(todos[0].status, 'active', '再点一次应该变回未完成');
 });
 
 test('重命名任务：改文字，空内容则不改', () => {
@@ -428,22 +454,21 @@ test('界面：折叠后任务不显示，箭头变成 ▸', () => {
   assertEqual(root.querySelector('.arrow').textContent, '▸', '箭头应该是收起状态');
 });
 
-test('界面：已完成的任务带 done 样式，标题只数未完成的', () => {
+test('界面：已完成的收进折叠分组，标题只数未完成的', () => {
   const { root } = setup({
     categories: ['工作'],
     todos: [
-      { text: '写周报', done: true, category: '工作' },
-      { text: '开会', done: false, category: '工作' }
+      { text: '写周报', status: 'done', category: '工作' },
+      { text: '开会', status: 'active', category: '工作' }
     ]
   });
 
-  // 按文字找，不要假设它们排在第几位 —— 排序规则以后还可能变
-  const itemNamed = (text) => [...root.querySelectorAll('.todo-item')]
-    .find((li) => li.querySelector('.todo-text').textContent === text);
-
-  assert(itemNamed('写周报').classList.contains('done'), '已完成的任务应该有 done 样式类');
-  assert(!itemNamed('开会').classList.contains('done'), '未完成的任务不该有 done 样式类');
+  assertEqual(textsOf(root, '.todo-text'), ['开会'], '默认只显示未完成的，已完成的收在分组里');
   assertEqual(root.querySelector('.category-count').textContent, '1', '标题上的数字应该只数未完成的');
+
+  expandGroup(root, '已完成');
+  assert(itemNamed(root, '写周报').classList.contains('done'), '已完成的任务应该有 done 样式类');
+  assert(!itemNamed(root, '开会').classList.contains('done'), '未完成的任务不该有 done 样式类');
 });
 
 
@@ -502,7 +527,7 @@ test('交互：点勾选框只切换完成状态，不会进详情页', () => {
 
   click(root.querySelector('.checkbox'));
 
-  assertEqual(todos[0].done, true, '应该被标记为完成');
+  assertEqual(todos[0].status, 'done', '应该被标记为完成');
   assertEqual(detailIndex, null, '不应该跳到详情页（靠 stopPropagation 拦住）');
 });
 
@@ -711,7 +736,7 @@ test('开始时间：详情页显示成 年-月-日 时:分 的样子', () => {
   addTodo('工作', '写周报');
   click(root.querySelector('.todo-item'));
 
-  const value = textsOf(root, '.detail-value')[1];   // 第一行是清单，第二行是开始时间
+  const value = detailValue(root, '开始时间');
   assert(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(value), '时间格式不对，实际显示：' + value);
 });
 
@@ -1151,52 +1176,71 @@ test('置顶：点列表里的置顶按钮就能切换', () => {
 
 // ========== 完成的任务沉到最下面 ==========
 
-test('完成排序：做完的任务沉到清单最下面', () => {
+test('完成分组：做完的任务从主列表移进"已完成"分组', () => {
   const { root } = setup({
     categories: ['工作'],
     todos: [
-      { text: 'A', done: false, category: '工作' },
-      { text: 'B', done: false, category: '工作' },
-      { text: 'C', done: false, category: '工作' }
+      { text: 'A', status: 'active', category: '工作' },
+      { text: 'B', status: 'active', category: '工作' },
+      { text: 'C', status: 'active', category: '工作' }
     ]
   });
 
   toggleTodo(0);   // 把 A 标记为完成
 
-  assertEqual(textsOf(root, '.todo-text'), ['B', 'C', 'A'], '做完的应该沉到最下面');
+  assertEqual(textsOf(root, '.todo-text'), ['B', 'C'], '主列表里不该再有 A');
+  assert(groupHeader(root, '已完成').textContent.includes('1'), '分组标题上应该显示有 1 条');
+
+  expandGroup(root, '已完成');
+  assert(itemNamed(root, 'A'), '展开后应该能看到 A');
 });
 
-test('完成排序：未完成的之间保持原来的顺序', () => {
+test('完成分组：分组默认是收起的', () => {
   const { root } = setup({
     categories: ['工作'],
     todos: [
-      { text: 'A', done: false, category: '工作' },
-      { text: 'B', done: true, category: '工作' },
-      { text: 'C', done: false, category: '工作' },
-      { text: 'D', done: true, category: '工作' }
+      { text: 'A', status: 'active', category: '工作' },
+      { text: 'B', status: 'done', category: '工作' }
     ]
   });
 
-  assertEqual(textsOf(root, '.todo-text'), ['A', 'C', 'B', 'D'], '未完成的在上、已完成的在下，各自保持原顺序');
+  assert(groupHeader(root, '已完成'), '应该有"已完成"分组');
+  assertEqual(itemNamed(root, 'B'), undefined, '默认收起，不该直接显示出来');
+
+  expandGroup(root, '已完成');
+  assert(itemNamed(root, 'B'), '展开后应该看得到');
+
+  expandGroup(root, '已完成');
+  assertEqual(itemNamed(root, 'B'), undefined, '再点一次应该收起来');
 });
 
-test('完成排序：置顶 > 未完成 > 已完成', () => {
+test('完成分组：一条都没有时不显示这个分组', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [{ text: 'A', status: 'active', category: '工作' }]
+  });
+
+  assertEqual(groupHeader(root, '已完成'), undefined, '没有已完成的任务就不该显示分组');
+  assertEqual(groupHeader(root, '已放弃'), undefined, '没有放弃的任务就不该显示分组');
+});
+
+test('完成分组：主列表里置顶的在最上面，其余保持原顺序', () => {
   const { root } = setup({
     categories: ['工作'],
     todos: [
-      { text: '普通', done: false, category: '工作' },
-      { text: '做完的', done: true, category: '工作' },
-      { text: '置顶的', done: false, category: '工作', pinned: true }
+      { text: '普通', status: 'active', category: '工作' },
+      { text: '做完的', status: 'done', category: '工作' },
+      { text: '置顶的', status: 'active', category: '工作', pinned: true }
     ]
   });
 
-  assertEqual(textsOf(root, '.todo-text'), ['置顶的', '普通', '做完的'], '三档顺序不对');
+  assertEqual(textsOf(root, '.todo-text'), ['置顶的', '普通'], '置顶的在最上，做完的收进分组');
 });
 
-test('完成排序：标记完成时会自动取消置顶', () => {
+test('完成分组：标记完成时会自动取消置顶', () => {
   const { storage } = setup({
     categories: ['工作'],
-    todos: [{ text: '写周报', done: false, category: '工作', pinned: true }]
+    todos: [{ text: '写周报', status: 'active', category: '工作', pinned: true }]
   });
 
   toggleTodo(0);
@@ -1205,53 +1249,214 @@ test('完成排序：标记完成时会自动取消置顶', () => {
   assertEqual(stored(storage, 'todos')[0].pinned, false, '取消置顶要保存下来');
 });
 
-test('完成排序：已完成的任务不显示置顶按钮', () => {
+test('完成分组：已完成的任务不显示置顶按钮', () => {
   const { root } = setup({
     categories: ['工作'],
     todos: [
-      { text: '没做完', done: false, category: '工作' },
-      { text: '做完了', done: true, category: '工作' }
+      { text: '没做完', status: 'active', category: '工作' },
+      { text: '做完了', status: 'done', category: '工作' }
     ]
   });
+  expandGroup(root, '已完成');
 
-  const items = [...root.querySelectorAll('.todo-item')];
-  assert(items[0].querySelector('.pin-btn'), '未完成的应该有置顶按钮');
-  assertEqual(items[1].querySelector('.pin-btn'), null, '已完成的置顶按钮没有意义，不该显示');
+  assert(itemNamed(root, '没做完').querySelector('.pin-btn'), '未完成的应该有置顶按钮');
+  assertEqual(itemNamed(root, '做完了').querySelector('.pin-btn'), null, '已完成的置顶按钮没有意义，不该显示');
 });
 
-test('完成排序：取消完成后回到未完成那一档', () => {
+test('完成分组：取消完成后回到主列表', () => {
   const { root } = setup({
     categories: ['工作'],
     todos: [
-      { text: 'A', done: false, category: '工作' },
-      { text: 'B', done: true, category: '工作' }
+      { text: 'A', status: 'active', category: '工作' },
+      { text: 'B', status: 'done', category: '工作' }
     ]
   });
 
   toggleTodo(1);   // 把 B 改回未完成
 
-  assertEqual(textsOf(root, '.todo-text'), ['A', 'B'], 'B 应该回到未完成那一档');
-  assertEqual(todos[1].done, false, '状态应该改回来了');
+  assertEqual(textsOf(root, '.todo-text'), ['A', 'B'], 'B 应该回到主列表');
+  assertEqual(todos[1].status, 'active', '状态应该改回来了');
+  assertEqual(groupHeader(root, '已完成'), undefined, '分组空了就不该再显示');
 });
 
-test('完成排序：拖拽落点和页面看到的顺序一致', () => {
+test('完成分组：拖拽落点和页面看到的顺序一致', () => {
   const { root } = setup({
     categories: ['工作'],
     todos: [
-      { text: '普通', done: false, category: '工作' },
-      { text: '做完的', done: true, category: '工作' },
-      { text: '置顶的', done: false, category: '工作', pinned: true }
+      { text: '普通', status: 'active', category: '工作' },
+      { text: '做完的', status: 'done', category: '工作' },
+      { text: '置顶的', status: 'active', category: '工作', pinned: true }
     ]
   });
-  // 页面上是：置顶的、普通、做完的
-  assertEqual(textsOf(root, '.todo-text'), ['置顶的', '普通', '做完的'], '先确认初始顺序');
+  assertEqual(textsOf(root, '.todo-text'), ['置顶的', '普通'], '先确认初始顺序');
 
   // 把"普通"（页面上第 2 个）拖到第 1 个位置
   const items = [...root.querySelectorAll('.todo-item')];
   moveTodoToPosition(Number(items[1].dataset.index), '工作', 0);
 
   // "普通"没置顶，所以会落在置顶的下面 —— 这是规则决定的，不是 bug
-  assertEqual(textsOf(root, '.todo-text'), ['置顶的', '普通', '做完的'], '置顶的优先级更高，普通任务插不到它上面');
+  assertEqual(textsOf(root, '.todo-text'), ['置顶的', '普通'], '置顶的优先级更高，普通任务插不到它上面');
+});
+
+
+// ========== 放弃 ==========
+
+test('放弃：菜单里可以放弃，任务进入"已放弃"分组', () => {
+  const { root, storage } = setup({
+    categories: ['工作'],
+    todos: [
+      { text: '学法语', status: 'active', category: '工作' },
+      { text: '写周报', status: 'active', category: '工作' }
+    ]
+  });
+
+  click(itemNamed(root, '学法语').querySelector('.menu-btn'));
+  click(menuItemNamed(root, '放弃这条'));
+
+  assertEqual(todos[0].status, 'abandoned', '状态应该是已放弃');
+  assertEqual(stored(storage, 'todos')[0].status, 'abandoned', '要保存下来');
+  assertEqual(textsOf(root, '.todo-text'), ['写周报'], '主列表里不该再有它');
+  assert(groupHeader(root, '已放弃').textContent.includes('1'), '应该出现"已放弃 1"的分组');
+});
+
+test('放弃：不是删除，记录还完整留着', () => {
+  const { storage } = setup({
+    categories: ['工作'],
+    todos: [{ text: '学法语', status: 'active', category: '工作', note: '买了本教材' }]
+  });
+
+  abandonTodo(0);
+
+  assertEqual(todos.length, 1, '放弃不该把记录删掉 —— 这正是它和删除的区别');
+  assertEqual(todos[0].text, '学法语', '内容还在');
+  assertEqual(todos[0].note, '买了本教材', '备注也还在');
+  assertEqual(stored(storage, 'todos').length, 1, '存储里也还在');
+});
+
+test('放弃：勾选框显示成灰色的叉', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [{ text: '学法语', status: 'abandoned', category: '工作' }]
+  });
+  expandGroup(root, '已放弃');
+
+  const checkbox = itemNamed(root, '学法语').querySelector('.checkbox');
+  assert(checkbox.classList.contains('abandoned'), '应该是"已放弃"的样子（灰色叉），而不是打勾');
+  assert(!checkbox.classList.contains('done'), '不该被当成已完成');
+});
+
+test('放弃：可以重新拾起，回到未完成', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [{ text: '学法语', status: 'abandoned', category: '工作' }]
+  });
+  expandGroup(root, '已放弃');
+
+  click(itemNamed(root, '学法语').querySelector('.menu-btn'));
+  click(menuItemNamed(root, '重新拾起'));
+
+  assertEqual(todos[0].status, 'active', '应该回到未完成');
+  assertEqual(textsOf(root, '.todo-text'), ['学法语'], '应该回到主列表');
+});
+
+test('放弃：点勾选框也能直接恢复成未完成', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [{ text: '学法语', status: 'abandoned', category: '工作' }]
+  });
+  expandGroup(root, '已放弃');
+
+  click(itemNamed(root, '学法语').querySelector('.checkbox'));
+
+  assertEqual(todos[0].status, 'active', '点勾选框应该恢复成未完成');
+});
+
+test('放弃：已放弃的菜单里没有"标记为完成"', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [{ text: '学法语', status: 'abandoned', category: '工作' }]
+  });
+  expandGroup(root, '已放弃');
+
+  click(itemNamed(root, '学法语').querySelector('.menu-btn'));
+  const names = textsOf(root, '.menu-item');
+
+  assert(names.includes('重新拾起'), '应该有"重新拾起"');
+  assert(!names.includes('标记为完成'), '已经放弃的任务不该还能直接标记为完成');
+});
+
+test('放弃：放弃时会取消置顶，标题数字也不再算它', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [
+      { text: '学法语', status: 'active', category: '工作', pinned: true },
+      { text: '写周报', status: 'active', category: '工作' }
+    ]
+  });
+
+  abandonTodo(0);
+
+  assertEqual(todos[0].pinned, false, '放弃了就该取消置顶');
+  assertEqual(root.querySelector('.category-count').textContent, '1', '标题数字只该数还要做的');
+});
+
+test('放弃：已放弃的任务不会再提醒', () => {
+  const { notifications } = setup({
+    categories: ['工作'],
+    todos: [{
+      text: '学法语', status: 'abandoned', category: '工作',
+      createdAt: FIXED_NOW, dueAt: isoAfter(-60), remindBefore: 60, reminded: false
+    }]
+  });
+
+  checkReminders();
+
+  assertEqual(notifications.length, 0, '都放弃了就别再提醒了');
+});
+
+test('放弃：已完成和已放弃分成两个独立分组', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [
+      { text: '做完的', status: 'done', category: '工作' },
+      { text: '放弃的', status: 'abandoned', category: '工作' }
+    ]
+  });
+
+  assert(groupHeader(root, '已完成').textContent.includes('1'), '应该有"已完成 1"');
+  assert(groupHeader(root, '已放弃').textContent.includes('1'), '应该有"已放弃 1"');
+
+  expandGroup(root, '已完成');
+  assert(itemNamed(root, '做完的'), '展开已完成应该看到做完的');
+  assertEqual(itemNamed(root, '放弃的'), undefined, '两个分组应该各自独立展开');
+});
+
+test('放弃：详情页会显示状态', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [{ text: '学法语', status: 'abandoned', category: '工作' }]
+  });
+  expandGroup(root, '已放弃');
+  click(itemNamed(root, '学法语'));
+
+  assertEqual(detailValue(root, '状态'), '已放弃', '详情页应该看得出这条是放弃了还是做完了');
+});
+
+
+// ========== 老数据迁移到三状态 ==========
+
+test('迁移：老数据的 done: true 变成 status: done', () => {
+  setup({
+    categories: ['工作'],
+    todos: [
+      { text: '做完的', done: true, category: '工作' },
+      { text: '没做的', done: false, category: '工作' }
+    ]
+  });
+
+  assertEqual(todos[0].status, 'done', '老的 done: true 应该变成已完成');
+  assertEqual(todos[1].status, 'active', '老的 done: false 应该变成未完成');
+  assert(!('done' in todos[0]), '老字段应该清掉，否则两个地方都记状态早晚会对不上');
 });
 
 
