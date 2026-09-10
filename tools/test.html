@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>测试 - 我的待办清单</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    max-width: 720px;
+    margin: 40px auto;
+    padding: 0 16px;
+    color: #333;
+  }
+
+  h1 {
+    font-size: 20px;
+  }
+
+  .hint {
+    margin-bottom: 20px;
+    font-size: 13px;
+    color: #999;
+  }
+
+  .summary {
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    font-size: 15px;
+    font-weight: 600;
+    border-radius: 10px;
+  }
+
+  .summary.pass {
+    color: #2e7d32;
+    background: #edf7ee;
+  }
+
+  .summary.fail {
+    color: #c62828;
+    background: #fdecea;
+  }
+
+  .result {
+    padding: 8px 12px;
+    margin-bottom: 4px;
+    font-size: 13px;
+    border-radius: 8px;
+  }
+
+  .result.pass {
+    color: #4a7c50;
+    background: #fafcfa;
+  }
+
+  .result.fail {
+    color: #c62828;
+    background: #fdecea;
+  }
+
+  .error {
+    margin: 8px 0 0;
+    padding: 10px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #8a2020;
+    background: white;
+    border-radius: 6px;
+    white-space: pre-wrap;
+  }
+
+  button {
+    padding: 8px 16px;
+    margin-bottom: 20px;
+    font-size: 14px;
+    color: white;
+    background: #4a90e2;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<h1>测试结果</h1>
+<p class="hint">每次改完功能，打开这个页面看一眼。全绿就说明原有功能没被改坏。</p>
+
+<button id="rerun">重新运行</button>
+
+<div id="summary" class="summary"></div>
+<div id="results"></div>
+
+<!-- app.js 在上一层目录，test-runner.js 和 tests.js 就在本目录 -->
+<script src="../app.js"></script>
+<script src="test-runner.js"></script>
+<script src="tests.js"></script>
+<script>
+  const resultsEl = document.getElementById('results');
+  const summaryEl = document.getElementById('summary');
+
+  runTests(resultsEl, summaryEl);
+
+  document.getElementById('rerun').addEventListener('click', () => {
+    runTests(resultsEl, summaryEl);
+  });
+</script>
+
+</body>
+</html>
