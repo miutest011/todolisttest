@@ -3,6 +3,15 @@
 // ---- 每条测试都用这个开场 ----
 // 它会准备一份干净的假数据环境，并把应用挂到一个临时元素上。
 // 用的是内存里的假存储，所以测试不会读也不会改你浏览器里的真实待办数据。
+// 测试里把"现在"固定成这一刻，时间相关的判断才有确定答案
+const FIXED_NOW = '2026-09-09T10:00:00.000Z';
+const FIXED_NOW_MS = new Date(FIXED_NOW).getTime();
+
+// 相对"现在"往后 minutes 分钟的时间
+function isoAfter(minutes) {
+  return new Date(FIXED_NOW_MS + minutes * 60 * 1000).toISOString();
+}
+
 function setup(data = {}) {
   const storage = createMemoryStorage();
   if (data.categories) storage.setItem('categories', JSON.stringify(data.categories));
@@ -11,13 +20,25 @@ function setup(data = {}) {
 
   useStorage(storage);
   useConfirm(() => true);           // 默认"用户点了确定"，需要时在测试里改
+  useNow(() => new Date(FIXED_NOW)); // 把时间冻住
+
+  // 假的通知：把弹过的内容记下来，不会真的弹到你屏幕上
+  const notifications = [];
+  useNotifier({
+    permission: () => 'granted',
+    request: () => undefined,
+    show: (title, options) => {
+      notifications.push({ title: title, body: options ? options.body : '' });
+      return true;
+    }
+  });
 
   const root = document.createElement('div');
   document.body.appendChild(root);
   onCleanup(() => root.remove());   // 这条测试跑完就把临时元素删掉
 
   initApp(root);
-  return { root, storage };
+  return { root, storage, notifications };
 }
 
 // ---- 模拟用户操作的小工具 ----
@@ -46,6 +67,20 @@ function stored(storage, key) {
   return value === null ? null : JSON.parse(value);
 }
 
+// 只挑出关心的几个字段来比较。
+// 别直接拿整个任务对象去比 —— 以后每加一个新字段（比如后来加的时间字段），
+// 那种写法都会误报一次失败
+function pick(object, keys) {
+  const result = {};
+  keys.forEach((key) => { result[key] = object[key]; });
+  return result;
+}
+
+// 深拷贝一份快照，用来对比"操作前后有没有意外改动"
+function snapshot(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
 
 // ========== 添加任务 ==========
 
@@ -54,8 +89,13 @@ test('添加任务：存进数组，也写进存储', () => {
 
   addTodo('工作', '写周报');
 
-  assertEqual(todos, [{ text: '写周报', done: false, category: '工作' }], '内存里的数据不对');
-  assertEqual(stored(storage, 'todos'), todos, '存储里的数据应该和内存一致');
+  assertEqual(todos.length, 1, '应该有一条任务');
+  assertEqual(
+    pick(todos[0], ['text', 'done', 'category']),
+    { text: '写周报', done: false, category: '工作' },
+    '内存里的数据不对'
+  );
+  assertEqual(stored(storage, 'todos'), todos, '存储里的数据应该和内存完全一致');
 });
 
 test('添加任务：空白内容不会被添加', () => {
@@ -105,9 +145,13 @@ test('移动任务：换一个清单，别的字段不变', () => {
     todos: [{ text: '买菜', done: true, category: '工作' }]
   });
 
+  const before = snapshot(todos[0]);
+
   moveTodo(0, '生活');
 
-  assertEqual(todos[0], { text: '买菜', done: true, category: '生活' }, '只应该改变所属清单');
+  assertEqual(todos[0].category, '生活', '应该换到新清单');
+  // 把清单名换回原值再整体比较：除了归属，别的字段都不该动
+  assertEqual({ ...todos[0], category: before.category }, before, '不该顺手改坏别的字段');
 });
 
 test('删除任务：删掉的是指定的那一条', () => {
@@ -274,6 +318,8 @@ test('数据持久化：存进去再读出来，内容一致', () => {
   const { storage } = setup({ categories: ['工作'] });
   addTodo('工作', '写周报');
   toggleTodo(0);
+  setDue(0, '2026-09-10T09:00', '60');
+  const before = snapshot(todos);
 
   // 模拟"关掉网页再打开"：用同一份存储重新启动一次
   const root2 = document.createElement('div');
@@ -282,7 +328,8 @@ test('数据持久化：存进去再读出来，内容一致', () => {
   useStorage(storage);
   initApp(root2);
 
-  assertEqual(todos, [{ text: '写周报', done: true, category: '工作' }], '重新打开后数据应该还在');
+  // 整个对象逐字段比较，任何一个字段没存下来都会被抓到
+  assertEqual(todos, before, '重新打开后数据应该和关闭前一模一样');
 });
 
 test('老数据兼容：没有 category 字段的任务会放进第一个清单', () => {
@@ -535,6 +582,264 @@ test('菜单：点"下移"之后清单顺序真的变了', () => {
 
   assertEqual(categories, ['生活', '工作'], '顺序应该交换');
   assertEqual(textsOf(root, '.category-name'), ['生活', '工作'], '界面上的顺序也要跟着变');
+});
+
+
+// ========== 开始时间 ==========
+
+test('开始时间：创建任务时自动记录当前时间', () => {
+  setup({ categories: ['工作'] });
+
+  addTodo('工作', '写周报');
+
+  assertEqual(todos[0].createdAt, FIXED_NOW, '开始时间应该是创建那一刻的系统时间');
+  assertEqual(todos[0].dueAt, null, '截止时间初始应该是空的');
+  assertEqual(todos[0].remindBefore, null, '初始应该是不提醒');
+});
+
+test('开始时间：只在详情页显示，列表页不显示', () => {
+  const { root } = setup({ categories: ['工作'] });
+  addTodo('工作', '写周报');
+
+  assertEqual(root.querySelectorAll('.detail-row').length, 0, '列表页不该出现时间信息');
+
+  click(root.querySelector('.todo-item'));
+  const labels = textsOf(root, '.detail-label');
+  assert(labels.includes('开始时间'), '详情页应该有"开始时间"这一行');
+});
+
+test('开始时间：详情页显示成 年-月-日 时:分 的样子', () => {
+  const { root } = setup({ categories: ['工作'] });
+  addTodo('工作', '写周报');
+  click(root.querySelector('.todo-item'));
+
+  const value = textsOf(root, '.detail-value')[1];   // 第一行是清单，第二行是开始时间
+  assert(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(value), '时间格式不对，实际显示：' + value);
+});
+
+test('老数据兼容：没有时间字段的老任务不会出错', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [{ text: '老任务', done: false, category: '工作' }]
+  });
+
+  assertEqual(todos[0].createdAt, null, '缺失的开始时间应该补成 null');
+  assertEqual(todos[0].reminded, false, '缺失的提醒标记应该补成 false');
+
+  click(root.querySelector('.todo-item'));
+  const values = textsOf(root, '.detail-value');
+  assert(values.includes('未记录'), '老任务的开始时间应该显示"未记录"，而不是空白或报错');
+});
+
+
+// ========== 截止时间 ==========
+
+test('截止时间：初始显示"未设置"，点时钟图标能打开编辑区', () => {
+  const { root } = setup({ categories: ['工作'] });
+  addTodo('工作', '写周报');
+  click(root.querySelector('.todo-item'));
+
+  assert(textsOf(root, '.detail-value').includes('未设置'), '初始应该显示未设置');
+  assertEqual(root.querySelector('.due-editor'), null, '一开始不该显示编辑区');
+
+  click(root.querySelector('.icon-btn'));
+
+  assert(root.querySelector('.due-editor'), '点时钟图标应该展开编辑区');
+  assert(root.querySelector('.due-input'), '编辑区里应该有选时间的输入框');
+  assert(root.querySelector('.remind-select'), '编辑区里应该有选提醒方式的下拉框');
+});
+
+test('截止时间：保存后写进数据，并显示在详情页', () => {
+  const { root, storage } = setup({ categories: ['工作'] });
+  addTodo('工作', '写周报');
+
+  setDue(0, '2026-09-10T09:00', '60');
+
+  const expected = new Date('2026-09-10T09:00').getTime();
+  assertEqual(new Date(todos[0].dueAt).getTime(), expected, '截止时间存的时刻不对');
+  assertEqual(todos[0].remindBefore, 60, '提醒设置应该是提前 60 分钟');
+  assertEqual(new Date(stored(storage, 'todos')[0].dueAt).getTime(), expected, '截止时间要保存下来');
+
+  click(root.querySelector('.todo-item'));
+  const labels = textsOf(root, '.detail-label');
+  assert(labels.includes('截止时间') && labels.includes('提醒'), '详情页应该显示截止时间和提醒两行');
+  assert(textsOf(root, '.detail-value').includes('提前 1 小时'), '提醒方式应该显示成人话');
+});
+
+test('截止时间：没选日期时不保存', () => {
+  setup({ categories: ['工作'] });
+  addTodo('工作', '写周报');
+
+  const saved = setDue(0, '', '60');
+
+  assertEqual(saved, false, '没选日期应该返回 false');
+  assertEqual(todos[0].dueAt, null, '不该写入截止时间');
+});
+
+test('截止时间：清除后连提醒设置一起清掉', () => {
+  setup({
+    categories: ['工作'],
+    todos: [{ text: '交报告', done: false, category: '工作', createdAt: FIXED_NOW, dueAt: isoAfter(60), remindBefore: 60, reminded: true }]
+  });
+
+  clearDue(0);
+
+  assertEqual(todos[0].dueAt, null, '截止时间应该被清空');
+  assertEqual(todos[0].remindBefore, null, '提醒设置也要一起清掉');
+  assertEqual(todos[0].reminded, false, '提醒标记要重置');
+});
+
+test('截止时间：改了时间后，之前提醒过的标记会重置', () => {
+  setup({
+    categories: ['工作'],
+    todos: [{ text: '交报告', done: false, category: '工作', createdAt: FIXED_NOW, dueAt: isoAfter(60), remindBefore: 60, reminded: true }]
+  });
+
+  setDue(0, '2026-09-20T09:00', '60');
+
+  assertEqual(todos[0].reminded, false, '换了新的截止时间，应该重新提醒一次');
+});
+
+test('截止时间：详情页里"未设置"时不显示提醒那一行', () => {
+  const { root } = setup({ categories: ['工作'] });
+  addTodo('工作', '写周报');
+  click(root.querySelector('.todo-item'));
+
+  assert(!textsOf(root, '.detail-label').includes('提醒'), '没设截止时间就没有提醒可言');
+});
+
+
+// ========== 到点提醒 ==========
+
+test('提醒：还没到时间不会弹通知', () => {
+  const { notifications } = setup({
+    categories: ['工作'],
+    todos: [{ text: '交报告', done: false, category: '工作', createdAt: FIXED_NOW, dueAt: isoAfter(120), remindBefore: 60, reminded: false }]
+  });
+
+  checkReminders();   // 离截止还有 120 分钟，设的是提前 60 分钟
+
+  assertEqual(notifications.length, 0, '还没到提醒时间，不该打扰用户');
+});
+
+test('提醒：到点了弹一次通知，内容里带任务名', () => {
+  const { notifications } = setup({
+    categories: ['工作'],
+    todos: [{ text: '交报告', done: false, category: '工作', createdAt: FIXED_NOW, dueAt: isoAfter(60), remindBefore: 60, reminded: false }]
+  });
+
+  checkReminders();   // 离截止正好 60 分钟，设的是提前 60 分钟 → 该响了
+
+  assertEqual(notifications.length, 1, '应该弹出一条通知');
+  assert(notifications[0].body.includes('交报告'), '通知内容里应该有任务名，实际：' + notifications[0].body);
+  assertEqual(todos[0].reminded, true, '弹过之后要标记为已提醒');
+});
+
+test('提醒：同一条任务不会重复提醒', () => {
+  const { notifications } = setup({
+    categories: ['工作'],
+    todos: [{ text: '交报告', done: false, category: '工作', createdAt: FIXED_NOW, dueAt: isoAfter(60), remindBefore: 60, reminded: false }]
+  });
+
+  checkReminders();
+  checkReminders();
+  checkReminders();
+
+  assertEqual(notifications.length, 1, '定时器每分钟都会检查，但同一条只能提醒一次');
+});
+
+test('提醒：提前 1 天的时间点算得对', () => {
+  const { notifications } = setup({
+    categories: ['工作'],
+    todos: [
+      { text: '刚好到点', done: false, category: '工作', createdAt: FIXED_NOW, dueAt: isoAfter(1440), remindBefore: 1440, reminded: false },
+      { text: '还差一分钟', done: false, category: '工作', createdAt: FIXED_NOW, dueAt: isoAfter(1441), remindBefore: 1440, reminded: false }
+    ]
+  });
+
+  checkReminders();
+
+  assertEqual(notifications.length, 1, '只有正好到点的那条该提醒');
+  assert(notifications[0].body.includes('刚好到点'), '提醒错了任务：' + notifications[0].body);
+});
+
+test('提醒：选了"不提醒"的任务不会响', () => {
+  const { notifications } = setup({
+    categories: ['工作'],
+    todos: [{ text: '交报告', done: false, category: '工作', createdAt: FIXED_NOW, dueAt: isoAfter(-60), remindBefore: null, reminded: false }]
+  });
+
+  checkReminders();   // 早就过了截止时间，但用户选的是不提醒
+
+  assertEqual(notifications.length, 0, '用户选了不提醒就不该弹');
+});
+
+test('提醒：已完成的任务不会响', () => {
+  const { notifications } = setup({
+    categories: ['工作'],
+    todos: [{ text: '交报告', done: true, category: '工作', createdAt: FIXED_NOW, dueAt: isoAfter(-60), remindBefore: 60, reminded: false }]
+  });
+
+  checkReminders();
+
+  assertEqual(notifications.length, 0, '已经做完的任务不用再提醒');
+});
+
+test('提醒：没设截止时间的任务不会响', () => {
+  const { notifications } = setup({
+    categories: ['工作'],
+    todos: [{ text: '随便记一笔', done: false, category: '工作', createdAt: FIXED_NOW, dueAt: null, remindBefore: 60, reminded: false }]
+  });
+
+  checkReminders();
+
+  assertEqual(notifications.length, 0, '没有截止时间就无从算起');
+});
+
+test('提醒：通知被浏览器拦下时，不标记为已提醒', () => {
+  setup({
+    categories: ['工作'],
+    todos: [{ text: '交报告', done: false, category: '工作', createdAt: FIXED_NOW, dueAt: isoAfter(60), remindBefore: 60, reminded: false }]
+  });
+  // 模拟用户拒绝了通知权限
+  useNotifier({ permission: () => 'denied', request: () => undefined, show: () => false });
+
+  checkReminders();
+
+  assertEqual(todos[0].reminded, false, '没真的弹出来就不算提醒过，以后授权了还能收到');
+});
+
+test('提醒：选了提醒才申请通知权限，选"不提醒"不打扰用户', () => {
+  setup({ categories: ['工作'] });
+  addTodo('工作', '写周报');
+  addTodo('工作', '买咖啡');
+
+  let requested = 0;
+  useNotifier({
+    permission: () => 'default',
+    request: () => { requested++; return undefined; },
+    show: () => false
+  });
+
+  setDue(1, '2026-09-10T09:00', '');     // 不提醒
+  assertEqual(requested, 0, '不提醒就不该弹权限申请');
+
+  setDue(0, '2026-09-10T09:00', '60');   // 提前 1 小时提醒
+  assertEqual(requested, 1, '选了提醒才应该申请通知权限');
+});
+
+test('提醒：没授权通知时，详情页会给出提示', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [{ text: '交报告', done: false, category: '工作', createdAt: FIXED_NOW, dueAt: isoAfter(60), remindBefore: 60, reminded: false }]
+  });
+  useNotifier({ permission: () => 'denied', request: () => undefined, show: () => false });
+
+  click(root.querySelector('.todo-item'));
+
+  const notice = root.querySelector('.notice');
+  assert(notice, '权限被拒绝时应该提示用户，否则会以为提醒功能坏了');
+  assert(notice.textContent.includes('通知'), '提示内容应该说清楚是通知的问题');
 });
 
 

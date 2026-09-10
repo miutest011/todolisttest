@@ -8,6 +8,22 @@ let storage = window.localStorage;
 let confirmFn = (message) => window.confirm(message);
 let appEl = null;
 
+// "现在几点"也做成可替换的：测试时可以把时间冻在某一刻，
+// 才能精确验证"提醒该不该响"
+let nowFn = () => new Date();
+
+// 系统通知。浏览器不支持或者用户没授权时安全地什么都不做，
+// show() 返回有没有真的弹出来
+let notifier = {
+  permission: () => (typeof Notification === 'undefined' ? 'unsupported' : Notification.permission),
+  request: () => (typeof Notification === 'undefined' ? undefined : Notification.requestPermission()),
+  show: (title, options) => {
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return false;
+    new Notification(title, options);
+    return true;
+  }
+};
+
 function useStorage(newStorage) {
   storage = newStorage;
 }
@@ -15,6 +31,24 @@ function useStorage(newStorage) {
 function useConfirm(newConfirm) {
   confirmFn = newConfirm;
 }
+
+function useNow(newNow) {
+  nowFn = newNow;
+}
+
+function useNotifier(newNotifier) {
+  notifier = newNotifier;
+}
+
+// 提醒的可选项。minutes 表示提前多少分钟，null 表示不提醒
+const REMIND_OPTIONS = [
+  { label: '不提醒', minutes: null },
+  { label: '准时提醒', minutes: 0 },
+  { label: '提前 5 分钟', minutes: 5 },
+  { label: '提前 30 分钟', minutes: 30 },
+  { label: '提前 1 小时', minutes: 60 },
+  { label: '提前 1 天', minutes: 1440 }
+];
 
 // 第一次打开时默认有这两个清单，之后用户可以自己加
 const DEFAULT_CATEGORIES = ['工作', '生活'];
@@ -29,6 +63,7 @@ let editingTaskIndex = null;// 正在重命名的任务（它在 todos 里的位
 let editingCategory = null; // 正在重命名的清单名字
 let openMenuKey = null;     // 哪个三点菜单是展开的，例如 'task-2'、'category-工作'
 let detailIndex = null;     // 正在看哪条任务的详情页（null = 看列表页）
+let editingDueFor = null;   // 正在给哪条任务设置截止时间
 
 // 把"临时"的界面状态清空（数据状态不动）
 function resetViewState() {
@@ -38,6 +73,7 @@ function resetViewState() {
   editingCategory = null;
   openMenuKey = null;
   detailIndex = null;
+  editingDueFor = null;
 }
 
 // 启动：把应用挂到某个页面元素上，读出数据，画出来
@@ -74,6 +110,12 @@ function loadTodos() {
       categories.push(todo.category);
       saveCategories();
     }
+    // 加时间功能之前存的老任务没有这几个字段，补上默认值，
+    // 否则详情页读到 undefined 会出问题
+    if (!('createdAt' in todo)) todo.createdAt = null;
+    if (!('dueAt' in todo)) todo.dueAt = null;
+    if (!('remindBefore' in todo)) todo.remindBefore = null;
+    if (!('reminded' in todo)) todo.reminded = false;
   });
 
   return parsed;
@@ -90,6 +132,34 @@ function loadCollapsed() {
 
 function saveCollapsed() {
   storage.setItem('collapsed', JSON.stringify(collapsed));
+}
+
+// ---- 时间相关的小工具 ----
+// 存进 localStorage 的时间统一用 ISO 格式的字符串（例如 '2026-09-09T09:20:00.000Z'），
+// 它带时区信息，不会因为换台电脑就错乱
+
+// 显示用：2026-09-09 17:20
+function formatDateTime(isoText) {
+  if (!isoText) return '';
+  const date = new Date(isoText);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+         ` ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+// 给 <input type="datetime-local"> 用的格式：2026-09-09T17:20（本地时间，没有时区）
+function toDateTimeInputValue(isoText) {
+  if (!isoText) return '';
+  const date = new Date(isoText);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+         `T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+// 把提醒设置翻译成人话
+function remindLabel(minutes) {
+  const option = REMIND_OPTIONS.find((item) => item.minutes === minutes);
+  return option ? option.label : '不提醒';
 }
 
 // ---- 画界面 ----
@@ -477,7 +547,6 @@ document.addEventListener('click', () => {
 });
 
 // ---- 详情页 ----
-// 目前只有标题和所属清单，备注、日期等以后加在这里
 function createDetailPage(index) {
   const todo = todos[index];
   const page = document.createElement('div');
@@ -487,6 +556,7 @@ function createDetailPage(index) {
   back.textContent = '← 返回';
   back.addEventListener('click', () => {
     detailIndex = null;
+    editingDueFor = null;
     render();
   });
 
@@ -498,17 +568,137 @@ function createDetailPage(index) {
   title.textContent = todo.text;
 
   card.append(createCheckbox(todo, index), title);
+  page.append(back, card);
 
-  const meta = document.createElement('div');
-  meta.className = 'detail-meta';
-  meta.textContent = '清单：' + todo.category;
+  page.appendChild(createDetailRow('清单', todo.category));
+  // 开始时间 = 创建这条任务的时间，只在详情页显示
+  page.appendChild(createDetailRow('开始时间', todo.createdAt ? formatDateTime(todo.createdAt) : '未记录'));
+
+  if (editingDueFor === index) {
+    page.appendChild(createDueEditor(index));
+  } else {
+    // 截止时间那一行右边有个可以点的时钟图标
+    const dueRow = createDetailRow('截止时间', todo.dueAt ? formatDateTime(todo.dueAt) : '未设置');
+    const clockBtn = document.createElement('button');
+    clockBtn.className = 'icon-btn';
+    clockBtn.textContent = '🕐';
+    clockBtn.title = '设置截止时间';
+    clockBtn.addEventListener('click', () => {
+      editingDueFor = index;
+      render();
+    });
+    dueRow.appendChild(clockBtn);
+    page.appendChild(dueRow);
+
+    // 没设截止时间就没有提醒可言，这一行就不显示了
+    if (todo.dueAt) {
+      page.appendChild(createDetailRow('提醒', remindLabel(todo.remindBefore)));
+
+      // 设了提醒但浏览器不给弹通知，得告诉用户一声，否则会以为坏了
+      if (todo.remindBefore !== null && notifier.permission() !== 'granted') {
+        const notice = document.createElement('div');
+        notice.className = 'notice';
+        notice.textContent = notifier.permission() === 'denied'
+          ? '⚠️ 浏览器的通知权限被拒绝了，到点不会弹提醒。可以在浏览器设置里重新允许。'
+          : '⚠️ 还没允许通知，到点可能不会弹提醒。';
+        page.appendChild(notice);
+      }
+    }
+  }
 
   const placeholder = document.createElement('div');
   placeholder.className = 'detail-placeholder';
-  placeholder.textContent = '备注、截止日期等功能以后加在这里';
+  placeholder.textContent = '备注等功能以后加在这里';
+  page.appendChild(placeholder);
 
-  page.append(back, card, meta, placeholder);
   return page;
+}
+
+// 详情页里的一行：左边灰色标签，右边内容
+function createDetailRow(label, value) {
+  const row = document.createElement('div');
+  row.className = 'detail-row';
+
+  const labelEl = document.createElement('span');
+  labelEl.className = 'detail-label';
+  labelEl.textContent = label;
+
+  const valueEl = document.createElement('span');
+  valueEl.className = value === '未设置' || value === '未记录' ? 'detail-value empty' : 'detail-value';
+  valueEl.textContent = value;
+
+  row.append(labelEl, valueEl);
+  return row;
+}
+
+// 点了时钟图标之后展开的编辑区：选时间 + 选提醒方式
+function createDueEditor(index) {
+  const todo = todos[index];
+  const box = document.createElement('div');
+  box.className = 'due-editor';
+
+  const dateInput = document.createElement('input');
+  dateInput.type = 'datetime-local';
+  dateInput.className = 'due-input';
+  dateInput.value = toDateTimeInputValue(todo.dueAt);
+
+  const select = document.createElement('select');
+  select.className = 'remind-select';
+  REMIND_OPTIONS.forEach((option) => {
+    const optionEl = document.createElement('option');
+    optionEl.value = option.minutes === null ? '' : String(option.minutes);
+    optionEl.textContent = option.label;
+    if (todo.remindBefore === option.minutes) {
+      optionEl.selected = true;
+    }
+    select.appendChild(optionEl);
+  });
+
+  const actions = document.createElement('div');
+  actions.className = 'due-actions';
+
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'btn-primary';
+  saveBtn.textContent = '保存';
+  saveBtn.addEventListener('click', () => setDue(index, dateInput.value, select.value));
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'btn-plain';
+  cancelBtn.textContent = '取消';
+  cancelBtn.addEventListener('click', () => {
+    editingDueFor = null;
+    render();
+  });
+
+  actions.append(saveBtn, cancelBtn);
+
+  // 已经设过截止时间才需要"清除"
+  if (todo.dueAt) {
+    const clearBtn = document.createElement('button');
+    clearBtn.className = 'btn-danger';
+    clearBtn.textContent = '清除';
+    clearBtn.addEventListener('click', () => clearDue(index));
+    actions.appendChild(clearBtn);
+  }
+
+  box.append(
+    labelledField('截止时间', dateInput),
+    labelledField('提醒', select),
+    actions
+  );
+  return box;
+}
+
+function labelledField(labelText, fieldEl) {
+  const wrap = document.createElement('label');
+  wrap.className = 'field';
+
+  const label = document.createElement('span');
+  label.className = 'detail-label';
+  label.textContent = labelText;
+
+  wrap.append(label, fieldEl);
+  return wrap;
 }
 
 // ---- 各种操作 ----
@@ -518,7 +708,15 @@ function addTodo(category, text) {
   const trimmed = text.trim();
   if (trimmed === '') return false;
 
-  todos.push({ text: trimmed, done: false, category: category });
+  todos.push({
+    text: trimmed,
+    done: false,
+    category: category,
+    createdAt: nowFn().toISOString(),   // 创建时把当前系统时间记下来
+    dueAt: null,                        // 截止时间，用户在详情页里设
+    remindBefore: null,                 // 提前多少分钟提醒，null = 不提醒
+    reminded: false                     // 这条的提醒是不是已经弹过了
+  });
   saveTodos();
   render();
   return true;
@@ -559,6 +757,92 @@ function renameTodo(index, newText) {
   saveTodos();
   render();
   return true;
+}
+
+// 保存截止时间和提醒设置。inputValue 来自 <input type="datetime-local">，
+// 形如 '2026-09-09T17:20'（本地时间）；remindValue 是分钟数的字符串，'' 表示不提醒
+function setDue(index, inputValue, remindValue) {
+  if (inputValue === '') return false;      // 没选日期就不保存
+
+  const todo = todos[index];
+  todo.dueAt = new Date(inputValue).toISOString();
+  todo.remindBefore = remindValue === '' ? null : Number(remindValue);
+  todo.reminded = false;                    // 时间改了，之前提醒过也要重新算
+
+  saveTodos();
+  editingDueFor = null;
+
+  // 要提醒的话，趁着用户刚点完按钮（浏览器只在用户操作时才允许弹权限申请）
+  if (todo.remindBefore !== null) {
+    ensureNotifyPermission();
+  }
+
+  render();
+  return true;
+}
+
+function clearDue(index) {
+  const todo = todos[index];
+  todo.dueAt = null;
+  todo.remindBefore = null;
+  todo.reminded = false;
+
+  saveTodos();
+  editingDueFor = null;
+  render();
+}
+
+function ensureNotifyPermission() {
+  if (notifier.permission() !== 'default') return;
+
+  const result = notifier.request();
+  // 申请结果是异步回来的，回来之后重画一下，好把"没授权"的提示去掉
+  if (result && typeof result.then === 'function') {
+    result.then(() => render());
+  }
+}
+
+// 检查有没有到点该提醒的任务。
+// 由定时器每分钟调一次；测试里可以把时间冻住后直接调用
+function checkReminders() {
+  const now = nowFn().getTime();
+  let changed = false;
+
+  todos.forEach((todo) => {
+    if (!todo.dueAt) return;             // 没设截止时间
+    if (todo.remindBefore === null) return;  // 用户选了不提醒
+    if (todo.reminded) return;           // 已经提醒过了，不重复打扰
+    if (todo.done) return;               // 已完成的不用提醒
+
+    const fireAt = new Date(todo.dueAt).getTime() - todo.remindBefore * 60 * 1000;
+    if (now < fireAt) return;            // 还没到时候
+
+    const shown = notifier.show('待办提醒', {
+      body: `${todo.text}（截止 ${formatDateTime(todo.dueAt)}）`
+    });
+
+    // 只有真的弹出来了才算提醒过。被浏览器拦掉的话保持未提醒，
+    // 等用户以后授权了还能收到
+    if (shown) {
+      todo.reminded = true;
+      changed = true;
+    }
+  });
+
+  if (changed) {
+    saveTodos();
+  }
+}
+
+let reminderTimer = null;
+
+// 由 index.html 启动。测试不调用它，而是直接调 checkReminders()
+function startReminderTimer() {
+  if (reminderTimer !== null) {
+    clearInterval(reminderTimer);
+  }
+  checkReminders();     // 先补上关着网页期间错过的提醒
+  reminderTimer = setInterval(checkReminders, 60 * 1000);
 }
 
 function moveTodo(index, newCategory) {
