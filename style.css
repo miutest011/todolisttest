@@ -169,6 +169,39 @@
     transition: opacity 0.15s;
   }
 
+  .drag-handle {
+    flex-shrink: 0;
+    padding: 4px 5px;
+    margin-right: 2px;
+    font-size: 13px;
+    line-height: 1;
+    color: #ddd;
+    background: none;
+    border: none;
+    cursor: grab;
+    /* 手机上按住手柄拖动时，不要把页面一起滚走 */
+    touch-action: none;
+  }
+
+  .drag-handle:hover {
+    color: #999;
+  }
+
+  .drag-handle:active {
+    cursor: grabbing;
+  }
+
+  /* 正在被拖动的那一块，半透明一点，好看清自己拖到哪了 */
+  .todo-item.dragging,
+  .category.dragging {
+    opacity: 0.45;
+  }
+
+  /* 空清单也要有一点高度，否则拖不进去 */
+  .category ul:empty {
+    min-height: 10px;
+  }
+
   .pin-btn {
     flex-shrink: 0;
     padding: 4px;

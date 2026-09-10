@@ -224,9 +224,13 @@ function render() {
   if (detailIndex !== null) {
     appEl.appendChild(createDetailPage(detailIndex));
   } else {
+    // 清单单独放一个容器里，拖拽排序时要靠它来算位置
+    const categoryList = document.createElement('div');
+    categoryList.id = 'category-list';
     categories.forEach((category) => {
-      appEl.appendChild(createCategorySection(category));
+      categoryList.appendChild(createCategorySection(category));
     });
+    appEl.appendChild(categoryList);
     appEl.appendChild(createNewCategoryRow());
   }
 
@@ -240,11 +244,107 @@ function render() {
   }
 }
 
+// ---- 拖拽排序 ----
+// 用的是指针事件（pointerdown / pointermove / pointerup），不是浏览器自带的 HTML5 拖拽。
+// 因为 HTML5 拖拽在手机上完全不工作，而指针事件能同时覆盖鼠标和触屏。
+//
+// 做法：按住手柄拖动时，直接把元素在页面上挪来挪去（所见即所得），
+// 松手时读一下最终的页面顺序，写回数据里。
+
+// 找出应该插到哪个元素前面：第一个"中线在指针下方"的元素。
+// 都不满足就返回 null，表示放到最后
+function findDropTarget(container, pointerY, dragging) {
+  const items = [...container.children].filter((el) => el !== dragging);
+  return items.find((el) => {
+    const rect = el.getBoundingClientRect();
+    return pointerY < rect.top + rect.height / 2;
+  }) || null;
+}
+
+// handle: 拖动手柄；item: 被拖动的整块元素
+// findContainer(x, y): 指针当前在哪个容器上（任务可以拖到别的清单去，所以要动态找）
+// onDrop(): 松手时把页面顺序写回数据
+function makeDraggable(handle, item, findContainer, onDrop) {
+  handle.addEventListener('pointerdown', (event) => {
+    event.preventDefault();      // 拖动时不要选中文字
+    event.stopPropagation();     // 不要触发所在行的点击
+
+    let hasMoved = false;
+    item.classList.add('dragging');
+
+    function onPointerMove(moveEvent) {
+      hasMoved = true;
+      const container = findContainer(moveEvent.clientX, moveEvent.clientY) || item.parentNode;
+      const target = findDropTarget(container, moveEvent.clientY, item);
+      // insertBefore 的第二个参数是 null 时就是追加到末尾，正好合用
+      container.insertBefore(item, target);
+    }
+
+    function onPointerUp() {
+      // 监听挂在 document 上，这样指针滑出手柄范围也不会丢
+      document.removeEventListener('pointermove', onPointerMove);
+      document.removeEventListener('pointerup', onPointerUp);
+      document.removeEventListener('pointercancel', onPointerUp);
+      item.classList.remove('dragging');
+      // 只是点了一下没拖动的话，什么都不用做
+      if (hasMoved) {
+        onDrop();
+      }
+    }
+
+    document.addEventListener('pointermove', onPointerMove);
+    document.addEventListener('pointerup', onPointerUp);
+    document.addEventListener('pointercancel', onPointerUp);
+  });
+}
+
+function createDragHandle() {
+  const handle = document.createElement('button');
+  handle.className = 'drag-handle';
+  handle.textContent = '⠿';
+  handle.title = '拖动排序';
+  handle.addEventListener('click', (event) => event.stopPropagation());
+  return handle;
+}
+
+// 指针停在哪个清单的任务区上（把整块区域都算进去，这样拖进空清单也容易对准）。
+// 只看纵向位置：任务是竖着排的，拖动时指针很容易偏到卡片左右外面去，
+// 要求横向也对准的话会经常判不中
+function findTaskContainerAt(x, y) {
+  const sections = [...appEl.querySelectorAll('.category')];
+  const hit = sections.find((section) => {
+    const rect = section.getBoundingClientRect();
+    return y >= rect.top && y <= rect.bottom;
+  });
+  // 折叠起来的清单没有任务列表，不能往里放
+  return hit ? hit.querySelector('ul') : null;
+}
+
+// 松手后：读出这条任务现在在页面上的位置，写回数据
+function commitTodoDrag(item) {
+  const list = item.parentNode;
+  const section = list.closest('.category');
+  if (!section) return;
+
+  moveTodoToPosition(
+    Number(item.dataset.index),
+    section.dataset.category,
+    [...list.children].indexOf(item)
+  );
+}
+
+// 松手后：按页面上的顺序重排清单
+function commitCategoryDrag() {
+  const container = appEl.querySelector('#category-list');
+  applyCategoryOrder([...container.children].map((section) => section.dataset.category));
+}
+
 // 一个清单区块：标题栏 + 任务列表 + "添加任务"那一行
 function createCategorySection(category) {
   const section = document.createElement('section');
   section.className = 'category';
-  section.appendChild(createCategoryHeader(category));
+  section.dataset.category = category;    // 拖拽时靠它认出这是哪个清单
+  section.appendChild(createCategoryHeader(category, section));
 
   // 折叠状态下就不画下面的内容了
   if (!collapsed.includes(category)) {
@@ -272,13 +372,23 @@ function createCategorySection(category) {
 }
 
 // 清单标题栏：点名字改名，点其它地方折叠/展开，右边是三点菜单
-function createCategoryHeader(category) {
+// section 是这个标题栏所属的清单区块 —— 拖动时移动的是整块，不是光一个标题栏
+function createCategoryHeader(category, section) {
   const header = document.createElement('div');
   header.className = 'category-header';
   header.addEventListener('click', () => {
     if (closeMenuIfOpen()) return;
     toggleCollapse(category);
   });
+
+  const handle = createDragHandle();
+  makeDraggable(
+    handle,
+    section,
+    () => appEl.querySelector('#category-list'),
+    commitCategoryDrag
+  );
+  header.appendChild(handle);
 
   const arrow = document.createElement('span');
   arrow.className = 'arrow';
@@ -323,6 +433,7 @@ function createCategoryHeader(category) {
 function createTodoItem(todo, index) {
   const li = document.createElement('li');
   li.className = 'todo-item';
+  li.dataset.index = index;      // 拖拽松手时靠它认出这是哪一条任务
   if (todo.done) {
     li.classList.add('done');
   }
@@ -331,6 +442,10 @@ function createTodoItem(todo, index) {
     detailIndex = index;
     render();
   });
+
+  const handle = createDragHandle();
+  makeDraggable(handle, li, findTaskContainerAt, () => commitTodoDrag(li));
+  li.appendChild(handle);
 
   const checkbox = createCheckbox(todo, index);
 
@@ -1066,6 +1181,50 @@ function startReminderTimer() {
   }
   checkReminders();     // 先补上关着网页期间错过的提醒
   reminderTimer = setInterval(checkReminders, 60 * 1000);
+}
+
+// 把第 fromIndex 条任务放到 targetCategory 里的第 position 个位置（按页面上看到的顺序数）。
+// 拖拽松手时调用；也可以单独调用，所以测试起来很方便
+function moveTodoToPosition(fromIndex, targetCategory, position) {
+  const moved = todos[fromIndex];
+  if (!moved || !categories.includes(targetCategory)) return false;
+
+  const rest = todos.filter((todo, index) => index !== fromIndex);
+  moved.category = targetCategory;
+
+  // 按清单重新组装整个数组，顺序和页面上看到的一致
+  const result = [];
+  categories.forEach((category) => {
+    const items = rest.filter((todo) => todo.category === category);
+
+    if (category === targetCategory) {
+      // 页面上置顶的排在前面，位置要按这个顺序来数
+      items.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+      const at = Math.max(0, Math.min(position, items.length));
+      items.splice(at, 0, moved);
+    }
+
+    result.push(...items);
+  });
+
+  todos = result;
+  saveTodos();
+  render();
+  return true;
+}
+
+// 按给定的顺序重排清单。只接受"和现有清单一模一样、只是顺序不同"的输入，
+// 免得页面上出了意外就把数据弄丢
+function applyCategoryOrder(names) {
+  const sameSet = names.length === categories.length &&
+    names.every((name) => categories.includes(name)) &&
+    new Set(names).size === names.length;
+  if (!sameSet) return false;
+
+  categories = names;
+  saveCategories();
+  render();
+  return true;
 }
 
 function moveTodo(index, newCategory) {

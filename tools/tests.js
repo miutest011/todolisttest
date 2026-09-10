@@ -63,6 +63,14 @@ function typeInto(element, text) {
   element.value = text;
 }
 
+// 模拟一次拖拽：按住手柄 → 移到某个高度 → 松手。
+// 拖拽代码把 pointermove / pointerup 挂在 document 上，所以后两步要发给 document
+function drag(handle, toY) {
+  handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientY: 0 }));
+  document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 10, clientY: toY }));
+  document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+}
+
 function textsOf(root, selector) {
   return [...root.querySelectorAll(selector)].map((el) => el.textContent);
 }
@@ -1121,6 +1129,190 @@ test('详情页：菜单里删除任务后回到列表页', async () => {
   assertEqual(todos.length, 0, '任务应该被删掉');
   assertEqual(detailIndex, null, '删完应该回到列表页');
   assert(root.querySelector('.category'), '应该显示清单列表');
+});
+
+
+// ========== 拖拽排序：数据部分 ==========
+
+test('拖拽排序：同一个清单内，把任务挪到指定位置', () => {
+  const { root, storage } = setup({
+    categories: ['工作'],
+    todos: [
+      { text: 'A', done: false, category: '工作' },
+      { text: 'B', done: false, category: '工作' },
+      { text: 'C', done: false, category: '工作' }
+    ]
+  });
+
+  moveTodoToPosition(0, '工作', 2);   // 把 A 拖到最后
+
+  assertEqual(textsOf(root, '.todo-text'), ['B', 'C', 'A'], '页面顺序不对');
+  assertEqual(stored(storage, 'todos').map((t) => t.text), ['B', 'C', 'A'], '新顺序要保存下来');
+});
+
+test('拖拽排序：把任务往前拖', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [
+      { text: 'A', done: false, category: '工作' },
+      { text: 'B', done: false, category: '工作' },
+      { text: 'C', done: false, category: '工作' }
+    ]
+  });
+
+  moveTodoToPosition(2, '工作', 0);   // 把 C 拖到最前
+
+  assertEqual(textsOf(root, '.todo-text'), ['C', 'A', 'B'], '页面顺序不对');
+});
+
+test('拖拽排序：可以把任务拖到别的清单里的指定位置', () => {
+  const { root } = setup({
+    categories: ['工作', '生活'],
+    todos: [
+      { text: '写周报', done: false, category: '工作' },
+      { text: '买菜', done: false, category: '生活' },
+      { text: '做饭', done: false, category: '生活' }
+    ]
+  });
+
+  moveTodoToPosition(0, '生活', 1);   // 把"写周报"拖到生活清单的中间
+
+  const sections = [...root.querySelectorAll('.category')];
+  assertEqual(textsOf(sections[0], '.todo-text'), [], '工作清单应该空了');
+  assertEqual(textsOf(sections[1], '.todo-text'), ['买菜', '写周报', '做饭'], '应该插在买菜和做饭之间');
+  assertEqual(todos.find((t) => t.text === '写周报').category, '生活', '所属清单要跟着改');
+});
+
+test('拖拽排序：可以拖进空清单', () => {
+  const { root } = setup({
+    categories: ['工作', '生活'],
+    todos: [{ text: '写周报', done: false, category: '工作' }]
+  });
+
+  moveTodoToPosition(0, '生活', 0);
+
+  const sections = [...root.querySelectorAll('.category')];
+  assertEqual(textsOf(sections[1], '.todo-text'), ['写周报'], '应该出现在生活清单里');
+});
+
+test('拖拽排序：位置超出范围时放到最后，不会出错', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [
+      { text: 'A', done: false, category: '工作' },
+      { text: 'B', done: false, category: '工作' }
+    ]
+  });
+
+  moveTodoToPosition(0, '工作', 99);
+
+  assertEqual(textsOf(root, '.todo-text'), ['B', 'A'], '越界的位置应该当成"放到最后"');
+});
+
+test('拖拽排序：拖动不会弄丢别的字段', () => {
+  setup({
+    categories: ['工作'],
+    todos: [
+      { text: 'A', done: true, category: '工作', createdAt: FIXED_NOW, dueAt: isoAfter(60), remindBefore: 60, reminded: true, note: '备注', attachments: [], pinned: false },
+      { text: 'B', done: false, category: '工作' }
+    ]
+  });
+  const before = snapshot(todos[0]);
+
+  moveTodoToPosition(0, '工作', 1);
+
+  const after = todos.find((t) => t.text === 'A');
+  assertEqual(after, before, '除了位置，任务本身的内容不该有任何变化');
+});
+
+test('拖拽排序：清单可以按新顺序重排', () => {
+  const { root, storage } = setup({ categories: ['工作', '生活', '学习'] });
+
+  const ok = applyCategoryOrder(['学习', '工作', '生活']);
+
+  assertEqual(ok, true, '应该重排成功');
+  assertEqual(textsOf(root, '.category-name'), ['学习', '工作', '生活'], '页面顺序不对');
+  assertEqual(stored(storage, 'categories'), ['学习', '工作', '生活'], '新顺序要保存');
+});
+
+test('拖拽排序：清单顺序对不上时拒绝写入，避免弄丢数据', () => {
+  setup({ categories: ['工作', '生活'] });
+
+  assertEqual(applyCategoryOrder(['工作']), false, '少了一个清单，应该拒绝');
+  assertEqual(applyCategoryOrder(['工作', '工作']), false, '重复的名字，应该拒绝');
+  assertEqual(applyCategoryOrder(['工作', '不存在的']), false, '出现了不存在的清单，应该拒绝');
+  assertEqual(categories, ['工作', '生活'], '被拒绝时原来的清单不该受影响');
+});
+
+
+// ========== 拖拽排序：界面部分 ==========
+
+test('拖拽：每条任务和每个清单都有拖动手柄', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [{ text: '写周报', done: false, category: '工作' }]
+  });
+
+  assert(root.querySelector('.todo-item .drag-handle'), '任务上应该有拖动手柄');
+  assert(root.querySelector('.category-header .drag-handle'), '清单标题栏上应该有拖动手柄');
+});
+
+test('拖拽：按住手柄拖动任务，松手后顺序真的变了', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [
+      { text: 'A', done: false, category: '工作' },
+      { text: 'B', done: false, category: '工作' },
+      { text: 'C', done: false, category: '工作' }
+    ]
+  });
+
+  const items = [...root.querySelectorAll('.todo-item')];
+  const handle = items[0].querySelector('.drag-handle');
+  // 把 A 拖到 C 的下半部分 —— 也就是最后
+  const targetRect = items[2].getBoundingClientRect();
+
+  drag(handle, targetRect.bottom);
+
+  assertEqual(todos.map((t) => t.text), ['B', 'C', 'A'], '数据里的顺序应该跟着变');
+});
+
+test('拖拽：只是点一下手柄没拖动的话，什么都不会发生', () => {
+  const { root, storage } = setup({
+    categories: ['工作'],
+    todos: [
+      { text: 'A', done: false, category: '工作' },
+      { text: 'B', done: false, category: '工作' }
+    ]
+  });
+  const before = stored(storage, 'todos');
+
+  const handle = root.querySelector('.todo-item .drag-handle');
+  handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientY: 0 }));
+  document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+
+  assertEqual(stored(storage, 'todos'), before, '没拖动就不该改数据');
+});
+
+test('拖拽：点手柄不会顺带进详情页', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [{ text: '写周报', done: false, category: '工作' }]
+  });
+
+  click(root.querySelector('.todo-item .drag-handle'));
+
+  assertEqual(detailIndex, null, '手柄的点击应该被拦住');
+});
+
+test('拖拽：拖清单的手柄不会触发折叠', () => {
+  const { root } = setup({ categories: ['工作', '生活'] });
+
+  const handle = root.querySelector('.category-header .drag-handle');
+  handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientY: 0 }));
+  document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+
+  assertEqual(collapsed, [], '按住手柄不该把清单折叠起来');
 });
 
 
