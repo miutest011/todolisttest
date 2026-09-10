@@ -1,0 +1,91 @@
+# 我的待办清单
+
+一个纯前端的待办清单，可以装到手机主屏幕上当 App 用。没有用任何框架和构建工具，
+所有数据都存在你自己的设备里，不上传到任何服务器。
+
+## 文件结构
+
+```
+index.html      页面骨架
+style.css       样式
+app.js          全部逻辑
+manifest.json   PWA 配置（应用名、图标、启动方式）
+sw.js           Service Worker，负责离线缓存
+icons/          应用图标
+tools/          测试工具（见 tools/README.md）
+```
+
+## 在电脑上打开
+
+直接双击 `index.html` 就能用。
+
+想测试 PWA 相关功能（安装、离线）的话，必须通过服务器打开：
+
+```bash
+python3 -m http.server 4173
+```
+
+然后访问 http://localhost:4173
+
+## 装到 iPhone 上
+
+**前提：必须是 https 网址。** 手机直接访问 `http://192.168.x.x:4173` 这种局域网地址
+是不行的——浏览器只在 https 或 localhost 下才允许 Service Worker 运行，
+装不成 App、也不能离线。
+
+### 用 GitHub Pages 发布（免费）
+
+1. 在 [github.com/new](https://github.com/new) 建一个仓库（**Public**，GitHub Pages 免费版需要公开仓库）
+
+2. 把代码推上去（把 `你的用户名` 和 `仓库名` 换成实际的）：
+
+```bash
+git remote add origin https://github.com/你的用户名/仓库名.git
+```
+
+```bash
+git push -u origin main
+```
+
+3. 在仓库页面点 **Settings → Pages**，Source 选 `Deploy from a branch`，
+   分支选 `main`、目录选 `/ (root)`，保存
+
+4. 等一两分钟，网址会是 `https://你的用户名.github.io/仓库名/`
+
+### 添加到主屏幕
+
+在 iPhone 上**用 Safari**打开那个网址（Chrome 不行，iOS 只有 Safari 支持添加 PWA）：
+
+分享按钮 → 添加到主屏幕 → 添加
+
+装好后就有自己的图标，点开是全屏的，没有 Safari 的地址栏。
+
+## 改了代码之后
+
+**记得把 `sw.js` 里的版本号加一**：
+
+```js
+const VERSION = 'v1';   // 改成 'v2'、'v3'……
+```
+
+不改的话，手机上会一直用缓存里的旧版本，你的修改不会生效。
+
+改完推上去，手机上把 App 关掉重开一次就是新版本了。
+
+## 已知的限制
+
+- **数据不同步**。数据存在各设备的浏览器里，手机上加的任务电脑上看不到，反之亦然。
+  想同步需要服务器和账号系统，那是后面的事。
+
+- **关掉 App 就不会提醒**。提醒是靠网页里的定时器实现的，App 关掉后定时器就停了。
+  iOS 上网页只能收服务器推送的通知，没法自己定本地闹钟。想要真正的后台提醒，
+  需要用 Capacitor 之类的工具打包成原生 App。
+
+- **别在浏览器里清除网站数据**，那样待办和附件都会没了。
+
+- 附件存在浏览器的本地数据库里，容量取决于设备剩余空间，视频塞太多可能会存不下
+  （存不下时会有提示）。
+
+## 测试
+
+改完代码打开 `tools/test.html` 看一眼，全绿就说明没改坏东西。详见 [tools/README.md](tools/README.md)。

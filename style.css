@@ -5,6 +5,55 @@
     padding: 0 16px;
     background: #ffffff;
     color: #333;
+    /* 装成 App 全屏运行时，别被刘海和底部横条挡住 */
+    padding-left: max(16px, env(safe-area-inset-left));
+    padding-right: max(16px, env(safe-area-inset-right));
+  }
+
+  /* ---- 手机上的调整 ---- */
+  @media (max-width: 600px) {
+    body {
+      margin-top: max(24px, env(safe-area-inset-top));
+      margin-bottom: max(24px, env(safe-area-inset-bottom));
+    }
+
+    h1 {
+      margin-bottom: 20px;
+    }
+  }
+
+  /* 触屏设备上把图标按钮的点击热区放大。
+     手指不像鼠标那么准，太小的按钮点不中 */
+  @media (hover: none) {
+    .drag-handle,
+    .pin-btn,
+    .menu-btn,
+    .icon-btn,
+    .attach-remove {
+      min-width: 36px;
+      min-height: 36px;
+      font-size: 15px;
+    }
+
+    .checkbox {
+      width: 24px;
+      height: 24px;
+    }
+
+    .checkbox.checked::after {
+      top: -1px;
+      left: 4px;
+      font-size: 15px;
+    }
+
+    .todo-item {
+      padding: 12px 8px;
+    }
+
+    .menu-item {
+      padding: 12px 16px;
+      font-size: 14px;
+    }
   }
 
   h1 {

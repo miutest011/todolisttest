@@ -2,7 +2,19 @@
 <html lang="zh">
 <head>
 <meta charset="UTF-8">
+<!-- 手机上按屏幕真实宽度渲染。没有这一行，iPhone 会当成电脑屏幕、把整页缩小 -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>我的待办清单</title>
+
+<!-- PWA：让它能被"添加到主屏幕"，装出来像个 App -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#ffffff">
+<!-- 下面几行是 iPhone 专用的，Safari 不认 manifest 里的部分设置 -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="待办">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -18,6 +30,17 @@
 
   // 启动提醒检查（每分钟看一遍有没有任务到点了）
   startReminderTimer();
+
+  // 注册 Service Worker，让网页能离线打开。
+  // 浏览器只在 https 或者 localhost 下才允许注册，所以用 http 的局域网地址访问时
+  // 这一步会被跳过 —— 那种情况下网页照常能用，只是装不成 App、也不能离线
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch((error) => {
+        console.log('Service Worker 没注册成功：', error.message);
+      });
+    });
+  }
 </script>
 
 </body>
