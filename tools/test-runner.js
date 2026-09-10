@@ -49,15 +49,29 @@ function createMemoryStorage() {
   };
 }
 
-function runTests(outputEl, summaryEl) {
+// 假的附件仓库，用来代替 IndexedDB。同样只存在内存里。
+// files 暴露出来，方便测试检查"文件到底存进去没有、删干净没有"
+function createMemoryBlobStore() {
+  const files = new Map();
+  return {
+    files: files,
+    save: (id, blob) => { files.set(id, blob); return Promise.resolve(); },
+    load: (id) => Promise.resolve(files.has(id) ? files.get(id) : null),
+    remove: (id) => { files.delete(id); return Promise.resolve(); }
+  };
+}
+
+// 测试函数可以是普通函数，也可以是 async 函数（附件相关的测试要等异步操作完成）。
+// await 一个普通返回值也是合法的，所以两种写法都能跑
+async function runTests(outputEl, summaryEl) {
   outputEl.innerHTML = '';
   let passed = 0;
   let failed = 0;
 
-  tests.forEach(({ name, fn }) => {
+  for (const { name, fn } of tests) {
     let error = null;
     try {
-      fn();
+      await fn();
     } catch (e) {
       error = e;
     }
@@ -88,7 +102,7 @@ function runTests(outputEl, summaryEl) {
       row.textContent = '✓ ' + name;
     }
     outputEl.appendChild(row);
-  });
+  }
 
   summaryEl.className = failed > 0 ? 'summary fail' : 'summary pass';
   summaryEl.textContent = failed > 0

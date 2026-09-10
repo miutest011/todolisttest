@@ -33,12 +33,21 @@ function setup(data = {}) {
     }
   });
 
+  // 假的附件仓库，代替 IndexedDB
+  const blobs = createMemoryBlobStore();
+  useBlobStore(blobs);
+
   const root = document.createElement('div');
   document.body.appendChild(root);
   onCleanup(() => root.remove());   // 这条测试跑完就把临时元素删掉
 
   initApp(root);
-  return { root, storage, notifications };
+  return { root, storage, notifications, blobs };
+}
+
+// 造一个假文件，用来测附件
+function fakeFile(name, type, contents = 'x') {
+  return new File([contents], name, { type: type });
 }
 
 // ---- 模拟用户操作的小工具 ----
@@ -843,6 +852,278 @@ test('提醒：没授权通知时，详情页会给出提示', () => {
 });
 
 
+// ========== 备注 ==========
+
+test('备注：初始为空，写完保存下来', () => {
+  const { storage } = setup({ categories: ['工作'] });
+  addTodo('工作', '写周报');
+
+  assertEqual(todos[0].note, '', '新任务的备注应该是空的');
+
+  saveNote(0, '记得附上上季度数据');
+
+  assertEqual(todos[0].note, '记得附上上季度数据', '备注应该被记下来');
+  assertEqual(stored(storage, 'todos')[0].note, '记得附上上季度数据', '备注要保存到存储里');
+});
+
+test('备注：详情页里失去焦点时自动保存', () => {
+  const { root } = setup({ categories: ['工作'] });
+  addTodo('工作', '写周报');
+  click(root.querySelector('.todo-item'));
+
+  const textarea = root.querySelector('.note-input');
+  assert(textarea, '详情页应该有备注输入框');
+
+  textarea.value = '顺手写的备注';
+  textarea.dispatchEvent(new FocusEvent('blur'));
+
+  assertEqual(todos[0].note, '顺手写的备注', '点到别处应该自动保存备注');
+});
+
+test('备注：老数据没有备注字段也不会出错', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [{ text: '老任务', done: false, category: '工作' }]
+  });
+
+  assertEqual(todos[0].note, '', '缺失的备注应该补成空字符串');
+
+  click(root.querySelector('.todo-item'));
+  assertEqual(root.querySelector('.note-input').value, '', '备注框应该是空的，而不是显示 undefined');
+});
+
+
+// ========== 附件 ==========
+
+test('附件：添加后，文件内容进仓库、信息记在任务上', async () => {
+  const { blobs, storage } = setup({ categories: ['工作'] });
+  addTodo('工作', '写周报');
+
+  await addAttachments(0, [fakeFile('图表.png', 'image/png', '假装是图片')]);
+
+  assertEqual(todos[0].attachments.length, 1, '任务上应该记录了一个附件');
+  assertEqual(todos[0].attachments[0].name, '图表.png', '文件名不对');
+  assertEqual(todos[0].attachments[0].type, 'image/png', '文件类型不对');
+  assertEqual(blobs.files.size, 1, '文件内容应该存进附件仓库');
+  assertEqual(stored(storage, 'todos')[0].attachments.length, 1, '附件信息要保存下来');
+});
+
+test('附件：一次可以添加多个', async () => {
+  const { blobs } = setup({ categories: ['工作'] });
+  addTodo('工作', '写周报');
+
+  await addAttachments(0, [
+    fakeFile('图.png', 'image/png'),
+    fakeFile('录音.m4a', 'audio/mp4'),
+    fakeFile('视频.mp4', 'video/mp4')
+  ]);
+
+  assertEqual(todos[0].attachments.length, 3, '三个文件都该加上');
+  assertEqual(blobs.files.size, 3, '三个文件的内容都该存进仓库');
+});
+
+test('附件：删除时，任务上的记录和仓库里的文件一起清掉', async () => {
+  const { blobs } = setup({ categories: ['工作'] });
+  addTodo('工作', '写周报');
+  await addAttachments(0, [fakeFile('图.png', 'image/png')]);
+  const id = todos[0].attachments[0].id;
+
+  await removeAttachment(0, id);
+
+  assertEqual(todos[0].attachments.length, 0, '任务上不该再有这个附件');
+  assertEqual(blobs.files.size, 0, '仓库里的文件也要删掉，否则会一直占着空间');
+});
+
+test('附件：删除任务时，它的附件文件也一起删掉', async () => {
+  const { blobs } = setup({ categories: ['工作'] });
+  addTodo('工作', '写周报');
+  await addAttachments(0, [fakeFile('图.png', 'image/png'), fakeFile('文档.pdf', 'application/pdf')]);
+
+  await deleteTodo(0);
+
+  assertEqual(blobs.files.size, 0, '任务都删了，它的附件不该继续留在仓库里');
+});
+
+test('附件：删除清单时，里面任务的附件也一起删掉', async () => {
+  const { blobs } = setup({ categories: ['工作'] });
+  addTodo('工作', '写周报');
+  await addAttachments(0, [fakeFile('图.png', 'image/png')]);
+  useConfirm(() => true);
+
+  deleteCategory('工作');
+  await Promise.resolve();   // 等附件删除的异步操作走完
+
+  assertEqual(blobs.files.size, 0, '清单连任务带附件都该清干净');
+});
+
+test('附件：存不下时给出提示，不会留下打不开的空附件', async () => {
+  const { root } = setup({ categories: ['工作'] });
+  addTodo('工作', '写周报');
+
+  // 模拟空间不足：保存文件直接失败
+  useBlobStore({
+    save: () => Promise.reject(new Error('空间不足')),
+    load: () => Promise.resolve(null),
+    remove: () => Promise.resolve()
+  });
+
+  click(root.querySelector('.todo-item'));
+  await addAttachments(0, [fakeFile('大视频.mp4', 'video/mp4')]);
+
+  assertEqual(todos[0].attachments.length, 0, '存失败就不该在任务上记这个附件');
+  assert(root.querySelector('.notice'), '应该给用户看到失败提示');
+});
+
+test('附件：详情页显示附件数量和文件名', async () => {
+  const { root } = setup({ categories: ['工作'] });
+  addTodo('工作', '写周报');
+  await addAttachments(0, [fakeFile('图表.png', 'image/png')]);
+
+  click(root.querySelector('.todo-item'));
+
+  assert(textsOf(root, '.section-label').some((t) => t.includes('附件（1）')), '附件标题上应该显示数量');
+  assert(root.querySelector('.attach-info').textContent.includes('图表.png'), '应该显示文件名');
+});
+
+test('附件：老数据没有附件字段也不会出错', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [{ text: '老任务', done: false, category: '工作' }]
+  });
+
+  assertEqual(todos[0].attachments, [], '缺失的附件字段应该补成空数组');
+
+  click(root.querySelector('.todo-item'));
+  assert(root.querySelector('.attach-add'), '详情页应该正常显示添加附件按钮');
+});
+
+
+// ========== 置顶 ==========
+
+test('置顶：切换状态并保存', () => {
+  const { storage } = setup({ categories: ['工作'] });
+  addTodo('工作', '写周报');
+
+  assertEqual(todos[0].pinned, false, '新任务默认不置顶');
+
+  togglePin(0);
+  assertEqual(todos[0].pinned, true, '应该变成置顶');
+  assertEqual(stored(storage, 'todos')[0].pinned, true, '置顶状态要保存');
+
+  togglePin(0);
+  assertEqual(todos[0].pinned, false, '再点一次应该取消置顶');
+});
+
+test('置顶：置顶的任务排到清单最前面', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [
+      { text: '第一条', done: false, category: '工作' },
+      { text: '第二条', done: false, category: '工作' },
+      { text: '第三条', done: false, category: '工作' }
+    ]
+  });
+
+  togglePin(2);   // 把第三条置顶
+
+  assertEqual(textsOf(root, '.todo-text'), ['第三条', '第一条', '第二条'], '置顶的应该排最前，其余保持原顺序');
+});
+
+test('置顶：只在自己所在的清单里排前面，不会跑到别的清单去', () => {
+  const { root } = setup({
+    categories: ['工作', '生活'],
+    todos: [
+      { text: '写周报', done: false, category: '工作' },
+      { text: '买菜', done: false, category: '生活' },
+      { text: '做饭', done: false, category: '生活' }
+    ]
+  });
+
+  togglePin(2);   // 把"做饭"置顶
+
+  const sections = [...root.querySelectorAll('.category')];
+  assertEqual(textsOf(sections[0], '.todo-text'), ['写周报'], '工作清单不该受影响');
+  assertEqual(textsOf(sections[1], '.todo-text'), ['做饭', '买菜'], '置顶只在生活清单内生效');
+});
+
+test('置顶：点列表里的置顶按钮就能切换', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [{ text: '写周报', done: false, category: '工作' }]
+  });
+
+  click(root.querySelector('.todo-item .pin-btn'));
+
+  assertEqual(todos[0].pinned, true, '点按钮应该置顶');
+  assertEqual(detailIndex, null, '点置顶按钮不该跳进详情页');
+  assert(root.querySelector('.pin-btn').classList.contains('pinned'), '置顶后按钮应该是高亮状态');
+});
+
+
+// ========== 详情页的操作菜单 ==========
+
+test('详情页：有置顶按钮和三点菜单', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [{ text: '写周报', done: false, category: '工作' }]
+  });
+
+  click(root.querySelector('.todo-item'));
+
+  assert(root.querySelector('.detail-card .pin-btn'), '详情页应该有置顶按钮');
+  assert(root.querySelector('.detail-card .menu-btn'), '详情页应该有三点菜单按钮');
+});
+
+test('详情页：菜单里能改名、移动、标记完成', () => {
+  const { root } = setup({
+    categories: ['工作', '生活'],
+    todos: [{ text: '写周报', done: false, category: '工作' }]
+  });
+  click(root.querySelector('.todo-item'));
+
+  click(root.querySelector('.detail-card .menu-btn'));
+  const names = textsOf(root, '.menu-item');
+
+  assert(names.includes('重命名'), '菜单里应该有重命名');
+  assert(names.includes('标记为完成'), '菜单里应该有标记完成');
+  assert(names.includes('生活'), '菜单里应该能移到别的清单');
+  assert(names.includes('删除任务'), '菜单里应该有删除');
+});
+
+test('详情页：点标题就能改名', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [{ text: '开会', done: false, category: '工作' }]
+  });
+  click(root.querySelector('.todo-item'));
+
+  click(root.querySelector('.detail-title'));
+  const input = root.querySelector('.edit-input');
+  assert(input, '点标题应该出现输入框');
+
+  typeInto(input, '开周会');
+  press(input, 'Enter');
+
+  assertEqual(todos[0].text, '开周会', '应该改名成功');
+  assertEqual(detailIndex, 0, '改完还应该待在详情页');
+});
+
+test('详情页：菜单里删除任务后回到列表页', async () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [{ text: '写周报', done: false, category: '工作' }]
+  });
+  click(root.querySelector('.todo-item'));
+
+  click(root.querySelector('.detail-card .menu-btn'));
+  click(menuItemNamed(root, '删除任务'));
+
+  assertEqual(todos.length, 0, '任务应该被删掉');
+  assertEqual(detailIndex, null, '删完应该回到列表页');
+  assert(root.querySelector('.category'), '应该显示清单列表');
+});
+
+
 // ========== 自检：验证测试工具本身可靠 ==========
 
 test('自检：值不相等时 assertEqual 确实会报错', () => {
@@ -863,6 +1144,25 @@ test('自检：条件为假时 assert 确实会报错', () => {
     threw = true;
   }
   assert(threw, 'assert 必须在条件为假时抛错');
+});
+
+test('自检：异步测试失败时不会被悄悄吞掉', async () => {
+  // 运行器就是这样调用每条测试的：await fn()。
+  // 如果哪天有人把 await 去掉了，async 测试里的失败就会被吞掉、全部假装通过
+  const failingTest = () => Promise.reject(new Error('故意失败'));
+
+  let caught = false;
+  try {
+    await failingTest();
+  } catch (e) {
+    caught = true;
+  }
+
+  assert(caught, '异步测试的失败必须能被抓到');
+  // 注意：这里只能检查 runTests 的类型，绝对不能真的调用它 —— 它会把所有测试再跑一遍，
+  // 包括这一条，然后无限递归
+  assertEqual(runTests.constructor.name, 'AsyncFunction',
+    'runTests 必须是 async 函数，否则来不及等异步测试跑完就下结论');
 });
 
 test('自检：每条测试的数据互相独立', () => {

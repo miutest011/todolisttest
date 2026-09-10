@@ -24,8 +24,47 @@ let notifier = {
   }
 };
 
+// 附件仓库。localStorage 只能存文字、总共才 5MB 左右，放不下图片视频，
+// 所以附件的内容单独存进 IndexedDB（浏览器自带的本地数据库，能直接存文件）。
+// 任务本身只记住附件的 id 和文件名，内容按 id 去这里取。
+function createIndexedDbBlobStore(dbName) {
+  let dbPromise = null;
+
+  function open() {
+    if (!dbPromise) {
+      dbPromise = new Promise((resolve, reject) => {
+        const request = indexedDB.open(dbName, 1);
+        request.onupgradeneeded = () => request.result.createObjectStore('files');
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    }
+    return dbPromise;
+  }
+
+  function run(mode, action) {
+    return open().then((db) => new Promise((resolve, reject) => {
+      const request = action(db.transaction('files', mode).objectStore('files'));
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    }));
+  }
+
+  return {
+    save: (id, blob) => run('readwrite', (store) => store.put(blob, id)),
+    load: (id) => run('readonly', (store) => store.get(id)),
+    remove: (id) => run('readwrite', (store) => store.delete(id))
+  };
+}
+
+let blobStore = createIndexedDbBlobStore('todolist-files');
+
 function useStorage(newStorage) {
   storage = newStorage;
+}
+
+function useBlobStore(newStore) {
+  blobStore = newStore;
 }
 
 function useConfirm(newConfirm) {
@@ -64,6 +103,7 @@ let editingCategory = null; // 正在重命名的清单名字
 let openMenuKey = null;     // 哪个三点菜单是展开的，例如 'task-2'、'category-工作'
 let detailIndex = null;     // 正在看哪条任务的详情页（null = 看列表页）
 let editingDueFor = null;   // 正在给哪条任务设置截止时间
+let attachmentError = null; // 附件保存失败时的提示文字
 
 // 把"临时"的界面状态清空（数据状态不动）
 function resetViewState() {
@@ -74,6 +114,7 @@ function resetViewState() {
   openMenuKey = null;
   detailIndex = null;
   editingDueFor = null;
+  attachmentError = null;
 }
 
 // 启动：把应用挂到某个页面元素上，读出数据，画出来
@@ -116,6 +157,9 @@ function loadTodos() {
     if (!('dueAt' in todo)) todo.dueAt = null;
     if (!('remindBefore' in todo)) todo.remindBefore = null;
     if (!('reminded' in todo)) todo.reminded = false;
+    if (!('note' in todo)) todo.note = '';
+    if (!('attachments' in todo)) todo.attachments = [];
+    if (!('pinned' in todo)) todo.pinned = false;
   });
 
   return parsed;
@@ -164,8 +208,17 @@ function remindLabel(minutes) {
 
 // ---- 画界面 ----
 // 任何操作都只做两件事：改上面的状态变量 → 调用 render()
+// 给附件预览生成的临时链接。每次重画前要释放掉，否则文件会一直占着内存
+let objectUrls = [];
+
+function releaseObjectUrls() {
+  objectUrls.forEach((url) => URL.revokeObjectURL(url));
+  objectUrls = [];
+}
+
 function render() {
   if (!appEl) return;
+  releaseObjectUrls();
   appEl.innerHTML = '';
 
   if (detailIndex !== null) {
@@ -196,10 +249,20 @@ function createCategorySection(category) {
   // 折叠状态下就不画下面的内容了
   if (!collapsed.includes(category)) {
     const list = document.createElement('ul');
+
+    // 先挑出这个清单里的任务，记住它们在 todos 里的真实位置
+    const items = [];
     todos.forEach((todo, index) => {
       if (todo.category === category) {
-        list.appendChild(createTodoItem(todo, index));
+        items.push({ todo: todo, index: index });
       }
+    });
+
+    // 置顶的排到前面。sort 是稳定的，所以没置顶的之间保持原有顺序
+    items.sort((a, b) => (b.todo.pinned ? 1 : 0) - (a.todo.pinned ? 1 : 0));
+
+    items.forEach((item) => {
+      list.appendChild(createTodoItem(item.todo, item.index));
     });
     section.appendChild(list);
     section.appendChild(createAddTaskRow(category));
@@ -296,8 +359,22 @@ function createTodoItem(todo, index) {
     render();
   });
 
-  li.append(checkbox, textSpan, createTodoMenu(index));
+  li.append(checkbox, textSpan, createPinButton(index), createTodoMenu(index));
   return li;
+}
+
+// 置顶按钮，放在三个点前面。已置顶时常亮，没置顶时鼠标移上去才显现
+function createPinButton(index) {
+  const todo = todos[index];
+  const btn = document.createElement('button');
+  btn.className = todo.pinned ? 'pin-btn pinned' : 'pin-btn';
+  btn.textContent = '📌';
+  btn.title = todo.pinned ? '取消置顶' : '置顶';
+  btn.addEventListener('click', (event) => {
+    event.stopPropagation();     // 不要进详情页
+    togglePin(index);
+  });
+  return btn;
 }
 
 function createCheckbox(todo, index) {
@@ -562,12 +639,33 @@ function createDetailPage(index) {
 
   const card = document.createElement('div');
   card.className = todo.done ? 'detail-card done' : 'detail-card';
+  card.append(createCheckbox(todo, index));
 
-  const title = document.createElement('span');
-  title.className = 'detail-title';
-  title.textContent = todo.text;
+  // 详情页里也能直接改名：和列表里共用 editingTaskIndex 这个状态
+  if (editingTaskIndex === index) {
+    card.appendChild(createRenameInput(
+      todo.text,
+      (newText) => {
+        renameTodo(index, newText);
+        editingTaskIndex = null;
+        render();
+      },
+      () => {
+        editingTaskIndex = null;
+        render();
+      }
+    ));
+  } else {
+    const title = document.createElement('span');
+    title.className = 'detail-title';
+    title.textContent = todo.text;
+    title.addEventListener('click', () => {
+      editingTaskIndex = index;
+      render();
+    });
+    card.append(title, createPinButton(index), createTodoMenu(index));
+  }
 
-  card.append(createCheckbox(todo, index), title);
   page.append(back, card);
 
   page.appendChild(createDetailRow('清单', todo.category));
@@ -606,12 +704,134 @@ function createDetailPage(index) {
     }
   }
 
-  const placeholder = document.createElement('div');
-  placeholder.className = 'detail-placeholder';
-  placeholder.textContent = '备注等功能以后加在这里';
-  page.appendChild(placeholder);
+  page.appendChild(createNoteSection(index));
+  page.appendChild(createAttachmentSection(index));
 
   return page;
+}
+
+// 备注：一个多行输入框，失去焦点时保存。
+// 这里故意不重画界面 —— 输入框里显示的已经是最新内容，重画只会打断用户
+function createNoteSection(index) {
+  const box = document.createElement('div');
+  box.className = 'note-box';
+
+  const label = document.createElement('div');
+  label.className = 'section-label';
+  label.textContent = '备注';
+
+  const textarea = document.createElement('textarea');
+  textarea.className = 'note-input';
+  textarea.rows = 4;
+  textarea.placeholder = '写点什么……';
+  textarea.value = todos[index].note;
+  textarea.addEventListener('blur', () => saveNote(index, textarea.value));
+
+  box.append(label, textarea);
+  return box;
+}
+
+// 附件区：已有附件的预览 + 一个"添加附件"按钮
+function createAttachmentSection(index) {
+  const todo = todos[index];
+  const box = document.createElement('div');
+  box.className = 'attach-box';
+
+  const label = document.createElement('div');
+  label.className = 'section-label';
+  label.textContent = `附件${todo.attachments.length > 0 ? '（' + todo.attachments.length + '）' : ''}`;
+  box.appendChild(label);
+
+  todo.attachments.forEach((attachment) => {
+    box.appendChild(createAttachmentItem(index, attachment));
+  });
+
+  // 真正的文件选择框藏起来，用好看的按钮去触发它
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.multiple = true;
+  fileInput.className = 'file-input';
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files.length > 0) {
+      addAttachments(index, fileInput.files);
+    }
+  });
+
+  const addBtn = document.createElement('button');
+  addBtn.className = 'attach-add';
+  addBtn.textContent = '+ 添加附件（图片 / 视频 / 录音 / 文件）';
+  addBtn.addEventListener('click', () => fileInput.click());
+
+  box.append(fileInput, addBtn);
+
+  if (attachmentError) {
+    const error = document.createElement('div');
+    error.className = 'notice';
+    error.textContent = '⚠️ ' + attachmentError;
+    box.appendChild(error);
+  }
+
+  return box;
+}
+
+// 一个附件：图片显示缩略图，音视频能直接播放，其它类型显示文件名
+function createAttachmentItem(todoIndex, attachment) {
+  const row = document.createElement('div');
+  row.className = 'attach-item';
+
+  const preview = document.createElement('div');
+  preview.className = 'attach-preview';
+
+  // 文件内容存在 IndexedDB 里，是异步取的：先占位，取到了再填进去
+  blobStore.load(attachment.id).then((blob) => {
+    if (!blob) {
+      preview.textContent = '（文件丢失）';
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    objectUrls.push(url);      // 记下来，下次重画时释放掉，免得占内存
+
+    if (attachment.type.startsWith('image/')) {
+      const img = document.createElement('img');
+      img.src = url;
+      preview.appendChild(img);
+    } else if (attachment.type.startsWith('video/')) {
+      const video = document.createElement('video');
+      video.src = url;
+      video.controls = true;
+      preview.appendChild(video);
+    } else if (attachment.type.startsWith('audio/')) {
+      const audio = document.createElement('audio');
+      audio.src = url;
+      audio.controls = true;
+      preview.appendChild(audio);
+    } else {
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = attachment.name;
+      link.textContent = '📄 ' + attachment.name;
+      preview.appendChild(link);
+    }
+  });
+
+  const info = document.createElement('div');
+  info.className = 'attach-info';
+  info.textContent = `${attachment.name} · ${formatFileSize(attachment.size)}`;
+
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'attach-remove';
+  removeBtn.textContent = '×';
+  removeBtn.title = '删除附件';
+  removeBtn.addEventListener('click', () => removeAttachment(todoIndex, attachment.id));
+
+  row.append(preview, info, removeBtn);
+  return row;
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' KB';
+  return (bytes / 1024 / 1024).toFixed(1) + ' MB';
 }
 
 // 详情页里的一行：左边灰色标签，右边内容
@@ -715,7 +935,10 @@ function addTodo(category, text) {
     createdAt: nowFn().toISOString(),   // 创建时把当前系统时间记下来
     dueAt: null,                        // 截止时间，用户在详情页里设
     remindBefore: null,                 // 提前多少分钟提醒，null = 不提醒
-    reminded: false                     // 这条的提醒是不是已经弹过了
+    reminded: false,                    // 这条的提醒是不是已经弹过了
+    note: '',                           // 备注
+    attachments: [],                    // 附件，只存 { id, name, type, size }
+    pinned: false                       // 是否置顶
   });
   saveTodos();
   render();
@@ -851,11 +1074,72 @@ function moveTodo(index, newCategory) {
   render();
 }
 
+function togglePin(index) {
+  todos[index].pinned = !todos[index].pinned;
+  saveTodos();
+  render();
+}
+
+function saveNote(index, text) {
+  todos[index].note = text;
+  saveTodos();
+}
+
+function addAttachments(index, files) {
+  const todo = todos[index];
+  attachmentError = null;
+
+  const jobs = [...files].map((file) => {
+    const id = 'file-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+    // 先把文件内容存进 IndexedDB，存成功了再把信息记到任务上，
+    // 否则会出现"任务说有附件、实际打不开"的情况
+    return blobStore.save(id, file).then(() => {
+      todo.attachments.push({
+        id: id,
+        name: file.name,
+        type: file.type || '',
+        size: file.size
+      });
+    });
+  });
+
+  return Promise.all(jobs)
+    .then(() => {
+      saveTodos();
+      render();
+    })
+    .catch((error) => {
+      // 最常见的是空间不够（视频很容易撑爆），得让用户知道
+      attachmentError = '附件保存失败：' + (error && error.message ? error.message : '可能是本地空间不足');
+      render();
+    });
+}
+
+function removeAttachment(index, attachmentId) {
+  const todo = todos[index];
+  todo.attachments = todo.attachments.filter((item) => item.id !== attachmentId);
+  saveTodos();
+  render();
+  return blobStore.remove(attachmentId);
+}
+
+// 删任务时把它的附件文件也删掉，否则文件会一直占着空间却没人认领
+function deleteAttachmentsOf(list) {
+  const jobs = [];
+  list.forEach((todo) => {
+    (todo.attachments || []).forEach((attachment) => {
+      jobs.push(blobStore.remove(attachment.id));
+    });
+  });
+  return Promise.all(jobs);
+}
+
 function deleteTodo(index) {
-  todos.splice(index, 1);
+  const removed = todos.splice(index, 1);
   saveTodos();
   detailIndex = null;      // 万一是在详情页删的，回到列表页
   render();
+  return deleteAttachmentsOf(removed);
 }
 
 function renameCategory(oldName, newName) {
@@ -902,9 +1186,12 @@ function deleteCategory(category) {
     if (!ok) return false;
   }
 
+  const removed = todos.filter((todo) => todo.category === category);
+
   categories = categories.filter((name) => name !== category);
   todos = todos.filter((todo) => todo.category !== category);
   collapsed = collapsed.filter((name) => name !== category);
+  deleteAttachmentsOf(removed);   // 连带删掉这些任务的附件文件
   if (addingTaskIn === category) addingTaskIn = null;
   if (editingCategory === category) editingCategory = null;
 

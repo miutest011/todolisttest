@@ -165,13 +165,55 @@
     line-height: 1;
     padding: 4px 6px;
     cursor: pointer;
-    opacity: 0;
+    opacity: 1;
     transition: opacity 0.15s;
   }
 
-  .todo-item:hover .menu-btn,
-  .category-header:hover .menu-btn,
-  .menu-btn.open {
+  .pin-btn {
+    flex-shrink: 0;
+    padding: 4px;
+    font-size: 13px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    opacity: 0.45;
+    transition: opacity 0.15s;
+  }
+
+  /* 已置顶的常亮，一眼能看出哪些被置顶了 */
+  .pin-btn.pinned {
+    opacity: 1;
+  }
+
+  /* 平时隐藏、鼠标移上去才显现 —— 只在真的支持悬停的设备上这么做。
+     手机和平板没有"悬停"这回事，那样会让按钮永远看不见。
+     详情页的按钮不参与隐藏：那一页就是来做操作的，藏起来没道理 */
+  @media (hover: hover) {
+    .todo-item .menu-btn,
+    .category-header .menu-btn,
+    .todo-item .pin-btn {
+      opacity: 0;
+    }
+
+    .todo-item:hover .menu-btn,
+    .category-header:hover .menu-btn,
+    .menu-btn.open {
+      opacity: 1;
+    }
+
+    .todo-item:hover .pin-btn {
+      opacity: 0.45;
+    }
+
+    .todo-item .pin-btn.pinned,
+    .todo-item:hover .pin-btn.pinned {
+      opacity: 1;
+    }
+  }
+
+  /* 放在媒体查询之后，保证鼠标移到按钮本身时一定是完全可见的 */
+  .menu-btn:hover,
+  .pin-btn:hover {
     opacity: 1;
   }
 
@@ -370,4 +412,104 @@
     text-align: center;
     border: 1px dashed #eee;
     border-radius: 10px;
+  }
+
+  .section-label {
+    margin: 22px 0 8px;
+    font-size: 12px;
+    color: #999;
+  }
+
+  .note-input {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 12px;
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #333;
+    background: #fafbfc;
+    border: 1px solid #eee;
+    border-radius: 10px;
+    outline: none;
+    resize: vertical;
+  }
+
+  .note-input:focus {
+    background: white;
+    border-color: #4a90e2;
+  }
+
+  .file-input {
+    display: none;
+  }
+
+  .attach-add {
+    width: 100%;
+    padding: 11px;
+    font-size: 13px;
+    color: #999;
+    background: none;
+    border: 1px dashed #e0e0e0;
+    border-radius: 10px;
+    cursor: pointer;
+  }
+
+  .attach-add:hover {
+    color: #4a90e2;
+    border-color: #4a90e2;
+  }
+
+  .attach-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    background: #fafbfc;
+    border-radius: 10px;
+  }
+
+  .attach-preview {
+    flex-shrink: 0;
+    max-width: 160px;
+    font-size: 13px;
+  }
+
+  .attach-preview img,
+  .attach-preview video {
+    display: block;
+    max-width: 160px;
+    max-height: 110px;
+    border-radius: 6px;
+  }
+
+  .attach-preview audio {
+    max-width: 160px;
+  }
+
+  .attach-preview a {
+    color: #4a90e2;
+    text-decoration: none;
+  }
+
+  .attach-info {
+    flex: 1;
+    font-size: 12px;
+    color: #999;
+    word-break: break-all;
+  }
+
+  .attach-remove {
+    flex-shrink: 0;
+    padding: 4px 6px;
+    font-size: 16px;
+    color: #ccc;
+    background: none;
+    border: none;
+    cursor: pointer;
+  }
+
+  .attach-remove:hover {
+    color: #e05252;
   }
