@@ -21,6 +21,7 @@ function setup(data = {}) {
   useStorage(storage);
   useConfirm(() => true);           // 默认"用户点了确定"，需要时在测试里改
   useNow(() => new Date(FIXED_NOW)); // 把时间冻住
+  useLongPressDelay(0);              // 长按判定改成 0，测试不用真等半秒
 
   // 假的通知：把弹过的内容记下来，不会真的弹到你屏幕上
   const notifications = [];
@@ -39,7 +40,20 @@ function setup(data = {}) {
 
   const root = document.createElement('div');
   document.body.appendChild(root);
-  onCleanup(() => root.remove());   // 这条测试跑完就把临时元素删掉
+
+  onCleanup(() => {
+    // 万一某条测试在拖到一半时失败了，这里要收拾干净：
+    // 补一个 pointerup 让拖拽正常结束（它会摘掉挂在 document 上的监听），
+    // 再把可能残留的悬浮副本删掉。
+    // 不然残留的监听会在后面的测试里乱开枪，查起来非常难受
+    try {
+      document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+    } catch (e) {
+      /* 收尾失败不该影响测试结果 */
+    }
+    document.querySelectorAll('.drag-ghost').forEach((ghost) => ghost.remove());
+    root.remove();
+  });
 
   initApp(root);
   return { root, storage, notifications, blobs };
@@ -63,12 +77,30 @@ function typeInto(element, text) {
   element.value = text;
 }
 
-// 模拟一次拖拽：按住手柄 → 移到某个高度 → 松手。
-// 拖拽代码把 pointermove / pointerup 挂在 document 上，所以后两步要发给 document
-function drag(handle, toY) {
-  handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientY: 0 }));
-  document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 10, clientY: toY }));
+// 模拟一次拖拽：在元素上按下 → 移到某个高度 → 松手。
+// 拖拽代码把 pointermove / pointerup 挂在 document 上，所以后两步要发给 document。
+// 默认模拟鼠标（移动超过阈值就开始拖）；pointerType 传 'touch' 就是模拟手指长按
+function drag(element, toY, pointerType = 'mouse') {
+  const from = element.getBoundingClientRect();
+  const startY = from.top + from.height / 2;
+
+  element.dispatchEvent(new PointerEvent('pointerdown', {
+    bubbles: true, clientX: 50, clientY: startY, pointerType: pointerType
+  }));
+  document.dispatchEvent(new PointerEvent('pointermove', {
+    bubbles: true, clientX: 50, clientY: toY, pointerType: pointerType
+  }));
+  document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: pointerType }));
+}
+
+// 只按下再松开，不移动
+function tapWithoutMoving(element) {
+  element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 50, clientY: 50 }));
   document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function textsOf(root, selector) {
@@ -414,15 +446,28 @@ test('界面：已完成的任务带 done 样式，标题只数未完成的', ()
 
 // ========== 界面交互 ==========
 
-test('交互：点任务文字进入重命名，回车保存', () => {
+test('交互：点任务文字也是进详情页，不会误触发改名', () => {
   const { root } = setup({
     categories: ['工作'],
     todos: [{ text: '开会', done: false, category: '工作' }]
   });
 
   click(root.querySelector('.todo-text'));
+
+  assertEqual(detailIndex, 0, '点文字应该进详情页');
+  assertEqual(root.querySelector('.edit-input'), null, '不该进入改名状态 —— 手机上文字占了一行的大半，很容易误触');
+});
+
+test('交互：详情页里点标题改名，回车保存', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [{ text: '开会', done: false, category: '工作' }]
+  });
+  click(root.querySelector('.todo-item'));
+
+  click(root.querySelector('.detail-title'));
   const input = root.querySelector('.edit-input');
-  assert(input, '点文字之后应该出现输入框');
+  assert(input, '详情页点标题之后应该出现输入框');
 
   typeInto(input, '开周会');
   press(input, 'Enter');
@@ -436,8 +481,9 @@ test('交互：重命名时按 Esc 取消，不改动内容', () => {
     categories: ['工作'],
     todos: [{ text: '开会', done: false, category: '工作' }]
   });
+  click(root.querySelector('.todo-item'));
 
-  click(root.querySelector('.todo-text'));
+  click(root.querySelector('.detail-title'));
   const input = root.querySelector('.edit-input');
   typeInto(input, '不想要的名字');
   press(input, 'Escape');
@@ -473,22 +519,54 @@ test('交互：点任务空白处进入详情页，点返回回到列表', () =>
   assertEqual(detailIndex, null, '返回后应该回到列表页');
 });
 
-test('交互：点清单名字进入改名，不会顺便折叠', () => {
+test('交互：点清单名字也是折叠，不会误触发改名', () => {
   const { root } = setup({ categories: ['工作'] });
 
   click(root.querySelector('.category-name'));
 
-  assert(root.querySelector('.edit-input'), '应该出现改名输入框');
-  assertEqual(collapsed, [], '点名字不应该触发折叠');
+  assertEqual(collapsed, ['工作'], '点名字应该折叠');
+  assertEqual(root.querySelector('.edit-input'), null, '不该进入改名状态');
 });
 
-test('交互：点标题栏空白处折叠，不会进入改名', () => {
+test('交互：点标题栏空白处折叠', () => {
   const { root } = setup({ categories: ['工作'] });
 
   click(root.querySelector('.category-header'));
 
   assertEqual(collapsed, ['工作'], '应该折叠起来');
-  assertEqual(root.querySelector('.edit-input'), null, '不应该进入改名状态');
+});
+
+test('交互：清单改名仍然可以从 ⋯ 菜单进入', () => {
+  const { root } = setup({ categories: ['工作'] });
+
+  click(root.querySelector('.category-header .menu-btn'));
+  click(menuItemNamed(root, '重命名'));
+
+  const input = root.querySelector('.edit-input');
+  assert(input, '菜单里的重命名应该能打开输入框');
+
+  typeInto(input, '工作安排');
+  press(input, 'Enter');
+
+  assertEqual(categories, ['工作安排'], '应该改名成功');
+});
+
+test('交互：任务改名仍然可以从 ⋯ 菜单进入', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [{ text: '开会', done: false, category: '工作' }]
+  });
+
+  click(root.querySelector('.todo-item .menu-btn'));
+  click(menuItemNamed(root, '重命名'));
+
+  const input = root.querySelector('.edit-input');
+  assert(input, '菜单里的重命名应该能打开输入框');
+
+  typeInto(input, '开周会');
+  press(input, 'Enter');
+
+  assertEqual(todos[0].text, '开周会', '应该改名成功');
 });
 
 test('交互：连续添加任务时输入框会保持打开', () => {
@@ -1247,17 +1325,7 @@ test('拖拽排序：清单顺序对不上时拒绝写入，避免弄丢数据',
 
 // ========== 拖拽排序：界面部分 ==========
 
-test('拖拽：每条任务和每个清单都有拖动手柄', () => {
-  const { root } = setup({
-    categories: ['工作'],
-    todos: [{ text: '写周报', done: false, category: '工作' }]
-  });
-
-  assert(root.querySelector('.todo-item .drag-handle'), '任务上应该有拖动手柄');
-  assert(root.querySelector('.category-header .drag-handle'), '清单标题栏上应该有拖动手柄');
-});
-
-test('拖拽：按住手柄拖动任务，松手后顺序真的变了', () => {
+test('拖拽：整行任意位置都能拖，松手后顺序真的变了', () => {
   const { root } = setup({
     categories: ['工作'],
     todos: [
@@ -1268,16 +1336,88 @@ test('拖拽：按住手柄拖动任务，松手后顺序真的变了', () => {
   });
 
   const items = [...root.querySelectorAll('.todo-item')];
-  const handle = items[0].querySelector('.drag-handle');
-  // 把 A 拖到 C 的下半部分 —— 也就是最后
-  const targetRect = items[2].getBoundingClientRect();
-
-  drag(handle, targetRect.bottom);
+  // 直接按在整行上（不再需要瞄准某个小手柄），拖到 C 的下面
+  drag(items[0], items[2].getBoundingClientRect().bottom);
 
   assertEqual(todos.map((t) => t.text), ['B', 'C', 'A'], '数据里的顺序应该跟着变');
 });
 
-test('拖拽：只是点一下手柄没拖动的话，什么都不会发生', () => {
+test('拖拽：拖动时会浮起一份跟手的副本，松手后收掉', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [
+      { text: 'A', done: false, category: '工作' },
+      { text: 'B', done: false, category: '工作' }
+    ]
+  });
+
+  const item = root.querySelector('.todo-item');
+  const startY = item.getBoundingClientRect().top;
+
+  item.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 50, clientY: startY }));
+  document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 50, clientY: startY + 60 }));
+
+  const ghost = document.querySelector('.drag-ghost');
+  assert(ghost, '拖动时应该有一份浮起来的副本');
+  assert(ghost.style.transform.includes('translateY'), '副本应该跟着指针走，实际：' + ghost.style.transform);
+  assert(item.classList.contains('drag-source'), '原来那块应该变成占位状态');
+
+  document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+
+  assertEqual(document.querySelector('.drag-ghost'), null, '松手后浮起的副本要收掉');
+  assert(!item.classList.contains('drag-source'), '占位状态也要清掉');
+});
+
+test('拖拽：手机上按住不动才开始拖，直接滑动是滚页面', async () => {
+  useLongPressDelay(60);   // 这条测试要真的等一下，才能区分"按住"和"划过"
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [
+      { text: 'A', done: false, category: '工作' },
+      { text: 'B', done: false, category: '工作' }
+    ]
+  });
+  useLongPressDelay(60);   // setup 会重置成 0，这里再设一次
+
+  const items = [...root.querySelectorAll('.todo-item')];
+  const startY = items[0].getBoundingClientRect().top;
+
+  // 手指按下后立刻滑走 —— 这是想滚动页面，不该触发拖拽
+  items[0].dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 50, clientY: startY, pointerType: 'touch' }));
+  document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 50, clientY: startY + 100, pointerType: 'touch' }));
+  await sleep(120);
+  document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 50, clientY: startY + 200, pointerType: 'touch' }));
+
+  assertEqual(document.querySelector('.drag-ghost'), null, '滑动应该是滚页面，不该变成拖拽');
+
+  document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch' }));
+  assertEqual(todos.map((t) => t.text), ['A', 'B'], '顺序不该变');
+});
+
+test('拖拽：手机上按住不动超过时间，就能开始拖', async () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [
+      { text: 'A', done: false, category: '工作' },
+      { text: 'B', done: false, category: '工作' }
+    ]
+  });
+  useLongPressDelay(30);
+
+  const items = [...root.querySelectorAll('.todo-item')];
+  const startY = items[0].getBoundingClientRect().top;
+
+  items[0].dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 50, clientY: startY, pointerType: 'touch' }));
+  await sleep(60);   // 按住不动，等长按生效
+  document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 50, clientY: items[1].getBoundingClientRect().bottom, pointerType: 'touch' }));
+
+  assert(document.querySelector('.drag-ghost'), '按住够久之后应该浮起来了');
+
+  document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch' }));
+  assertEqual(todos.map((t) => t.text), ['B', 'A'], '松手后顺序应该变了');
+});
+
+test('拖拽：只是点一下没拖动的话，不会改数据', () => {
   const { root, storage } = setup({
     categories: ['工作'],
     todos: [
@@ -1287,32 +1427,55 @@ test('拖拽：只是点一下手柄没拖动的话，什么都不会发生', ()
   });
   const before = stored(storage, 'todos');
 
-  const handle = root.querySelector('.todo-item .drag-handle');
-  handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientY: 0 }));
-  document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+  tapWithoutMoving(root.querySelector('.todo-item'));
 
   assertEqual(stored(storage, 'todos'), before, '没拖动就不该改数据');
 });
 
-test('拖拽：点手柄不会顺带进详情页', () => {
+test('拖拽：拖完之后紧跟的那次点击不会误进详情页', () => {
   const { root } = setup({
     categories: ['工作'],
-    todos: [{ text: '写周报', done: false, category: '工作' }]
+    todos: [
+      { text: 'A', done: false, category: '工作' },
+      { text: 'B', done: false, category: '工作' }
+    ]
   });
 
-  click(root.querySelector('.todo-item .drag-handle'));
+  const items = [...root.querySelectorAll('.todo-item')];
+  drag(items[0], items[1].getBoundingClientRect().bottom);
+  // 真实浏览器里，松手后还会补一个 click 事件
+  items[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
-  assertEqual(detailIndex, null, '手柄的点击应该被拦住');
+  assertEqual(detailIndex, null, '刚拖完不该顺带进详情页');
 });
 
-test('拖拽：拖清单的手柄不会触发折叠', () => {
+test('拖拽：拖动清单不会顺带把它折叠起来', () => {
   const { root } = setup({ categories: ['工作', '生活'] });
 
-  const handle = root.querySelector('.category-header .drag-handle');
-  handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientY: 0 }));
-  document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+  const headers = [...root.querySelectorAll('.category-header')];
+  drag(headers[0], headers[1].getBoundingClientRect().bottom);
+  headers[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
-  assertEqual(collapsed, [], '按住手柄不该把清单折叠起来');
+  assertEqual(collapsed, [], '拖动不该触发折叠');
+  assertEqual(categories, ['生活', '工作'], '顺序应该换过来了');
+});
+
+test('拖拽：按在勾选框上不会启动拖动', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [
+      { text: 'A', done: false, category: '工作' },
+      { text: 'B', done: false, category: '工作' }
+    ]
+  });
+
+  const checkbox = root.querySelector('.checkbox');
+  checkbox.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 50, clientY: 100 }));
+  document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 50, clientY: 400 }));
+
+  assertEqual(document.querySelector('.drag-ghost'), null, '勾选框上的按压应该留给勾选，不该变成拖拽');
+
+  document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
 });
 
 

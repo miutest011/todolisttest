@@ -245,11 +245,23 @@ function render() {
 }
 
 // ---- 拖拽排序 ----
-// 用的是指针事件（pointerdown / pointermove / pointerup），不是浏览器自带的 HTML5 拖拽。
-// 因为 HTML5 拖拽在手机上完全不工作，而指针事件能同时覆盖鼠标和触屏。
+// 用指针事件（pointerdown / pointermove / pointerup）自己实现，
+// 因为浏览器自带的 HTML5 拖拽在手机上完全不工作。
 //
-// 做法：按住手柄拖动时，直接把元素在页面上挪来挪去（所见即所得），
-// 松手时读一下最终的页面顺序，写回数据里。
+// 手感上仿的是 iPhone 桌面挪 App 的感觉：
+//   手机上按住不放约半秒 → 这一块"浮起来"跟着手指走；
+//   电脑上按住鼠标挪动一点就开始拖，不用等。
+// 浮起来的其实是一个副本（ghost），原来那块留在原地变淡当占位，
+// 拖到哪里就把占位插到哪里，松手时把页面顺序写回数据。
+
+let longPressDelay = 450;        // 触屏上按住多久开始拖动
+const MOVE_THRESHOLD = 8;        // 移动超过这么多像素就不算"按住不动"了
+const EDGE_SIZE = 70;            // 拖到离屏幕边缘这么近时自动滚动
+const EDGE_SPEED = 12;
+
+function useLongPressDelay(ms) {  // 测试时改成 0，免得每条测试都要等半秒
+  longPressDelay = ms;
+}
 
 // 找出应该插到哪个元素前面：第一个"中线在指针下方"的元素。
 // 都不满足就返回 null，表示放到最后
@@ -261,50 +273,125 @@ function findDropTarget(container, pointerY, dragging) {
   }) || null;
 }
 
-// handle: 拖动手柄；item: 被拖动的整块元素
-// findContainer(x, y): 指针当前在哪个容器上（任务可以拖到别的清单去，所以要动态找）
-// onDrop(): 松手时把页面顺序写回数据
-function makeDraggable(handle, item, findContainer, onDrop) {
-  handle.addEventListener('pointerdown', (event) => {
-    event.preventDefault();      // 拖动时不要选中文字
-    event.stopPropagation();     // 不要触发所在行的点击
+// 拖到屏幕上下边缘时自动滚动，否则长列表根本拖不到远处
+function autoScroll(pointerY) {
+  if (pointerY < EDGE_SIZE) {
+    window.scrollBy(0, -EDGE_SPEED);
+  } else if (pointerY > window.innerHeight - EDGE_SIZE) {
+    window.scrollBy(0, EDGE_SPEED);
+  }
+}
 
-    let hasMoved = false;
-    item.classList.add('dragging');
+// handle: 按在哪个元素上才开始拖
+// findContainer(x, y): 指针当前落在哪个容器上（任务能拖到别的清单，所以要动态找）
+// onDrop(): 松手时把页面顺序写回数据
+// movedElement: 实际被搬动的元素。不传就等于 handle 自己。
+//   清单是"按住标题栏、搬动整个区块"，所以这两个不是同一个元素
+function makeDraggable(handle, findContainer, onDrop, movedElement) {
+  const item = movedElement || handle;
+
+  handle.addEventListener('pointerdown', (event) => {
+    // 按在勾选框、置顶、菜单这些控件上时不启动拖动，它们有自己的事情要做
+    if (event.target.closest('button, input, textarea, select, .checkbox')) return;
+    if (event.button > 0) return;   // 只响应左键
+
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const isTouch = event.pointerType === 'touch';
+
+    let dragging = false;
+    let ghost = null;
+    let timer = null;
+
+    function beginDrag() {
+      timer = null;
+      dragging = true;
+
+      // 复制一份浮在最上层，跟着手指走；原来那块留在原地变淡，充当占位
+      const rect = item.getBoundingClientRect();
+      ghost = item.cloneNode(true);
+      ghost.classList.add('drag-ghost');
+      ghost.style.width = rect.width + 'px';
+      ghost.style.left = rect.left + 'px';
+      ghost.style.top = rect.top + 'px';
+      document.body.appendChild(ghost);
+
+      item.classList.add('drag-source');
+    }
+
+    function cancelLongPress() {
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    }
+
+    // 手机上按住不放才开始拖；电脑上不用等
+    if (isTouch) {
+      timer = setTimeout(beginDrag, longPressDelay);
+    }
 
     function onPointerMove(moveEvent) {
-      hasMoved = true;
+      const distance = Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY);
+
+      if (!dragging) {
+        if (isTouch) {
+          // 长按还没到就滑动了，说明用户是想滚页面，别抢
+          if (distance > MOVE_THRESHOLD) cancelLongPress();
+          return;
+        }
+        if (distance <= MOVE_THRESHOLD) return;
+        // 鼠标不用等长按：动一下就开始拖，并且这一次移动也要立刻算数，
+        // 不然会白白浪费第一次移动，手感上就是"迟钝一下才跟上"
+        beginDrag();
+      }
+
+      // 只跟着上下走。左右锁住，竖排列表这样更稳
+      ghost.style.transform = `translateY(${moveEvent.clientY - startY}px) scale(1.03)`;
+      autoScroll(moveEvent.clientY);
+
       const container = findContainer(moveEvent.clientX, moveEvent.clientY) || item.parentNode;
       const target = findDropTarget(container, moveEvent.clientY, item);
       // insertBefore 的第二个参数是 null 时就是追加到末尾，正好合用
       container.insertBefore(item, target);
     }
 
+    // 拖动过程中要拦住页面滚动。
+    // 这个监听必须写成 passive: false，否则浏览器不许我们拦
+    function onTouchMove(touchEvent) {
+      if (dragging) touchEvent.preventDefault();
+    }
+
     function onPointerUp() {
-      // 监听挂在 document 上，这样指针滑出手柄范围也不会丢
+      cancelLongPress();
       document.removeEventListener('pointermove', onPointerMove);
       document.removeEventListener('pointerup', onPointerUp);
       document.removeEventListener('pointercancel', onPointerUp);
-      item.classList.remove('dragging');
-      // 只是点了一下没拖动的话，什么都不用做
-      if (hasMoved) {
-        onDrop();
-      }
+      document.removeEventListener('touchmove', onTouchMove);
+
+      if (!dragging) return;      // 只是点了一下，交给点击事件去处理
+
+      ghost.remove();
+      item.classList.remove('drag-source');
+      // 刚拖完，紧接着会来一个 click 事件，要拦掉，否则会误进详情页
+      suppressNextClick = true;
+      onDrop();
     }
 
     document.addEventListener('pointermove', onPointerMove);
     document.addEventListener('pointerup', onPointerUp);
     document.addEventListener('pointercancel', onPointerUp);
+    document.addEventListener('touchmove', onTouchMove, { passive: false });
   });
 }
 
-function createDragHandle() {
-  const handle = document.createElement('button');
-  handle.className = 'drag-handle';
-  handle.textContent = '⠿';
-  handle.title = '拖动排序';
-  handle.addEventListener('click', (event) => event.stopPropagation());
-  return handle;
+// 拖动结束后紧跟着的那一次点击要忽略掉
+let suppressNextClick = false;
+
+function shouldIgnoreClick() {
+  if (!suppressNextClick) return false;
+  suppressNextClick = false;
+  return true;
 }
 
 // 指针停在哪个清单的任务区上（把整块区域都算进去，这样拖进空清单也容易对准）。
@@ -376,19 +463,20 @@ function createCategorySection(category) {
 function createCategoryHeader(category, section) {
   const header = document.createElement('div');
   header.className = 'category-header';
+  // 点标题栏任何地方（名字也算）都是折叠/展开。改名走 ⋯ 菜单
   header.addEventListener('click', () => {
+    if (shouldIgnoreClick()) return;
     if (closeMenuIfOpen()) return;
     toggleCollapse(category);
   });
 
-  const handle = createDragHandle();
+  // 按住标题栏就能拖动整个清单
   makeDraggable(
-    handle,
-    section,
+    header,
     () => appEl.querySelector('#category-list'),
-    commitCategoryDrag
+    commitCategoryDrag,
+    section
   );
-  header.appendChild(handle);
 
   const arrow = document.createElement('span');
   arrow.className = 'arrow';
@@ -414,11 +502,7 @@ function createCategoryHeader(category, section) {
   const name = document.createElement('span');
   name.className = 'category-name';
   name.textContent = category;
-  name.addEventListener('click', (event) => {
-    event.stopPropagation();       // 不要触发标题栏的折叠
-    editingCategory = category;
-    render();
-  });
+  // 这里不再拦点击：让它冒泡到标题栏，统一是折叠/展开。改名走 ⋯ 菜单
 
   const remaining = todos.filter((todo) => todo.category === category && !todo.done).length;
   const count = document.createElement('span');
@@ -437,15 +521,17 @@ function createTodoItem(todo, index) {
   if (todo.done) {
     li.classList.add('done');
   }
+  // 点这一行的任何地方（文字也算）都是进详情页。
+  // 改名放在详情页和 ⋯ 菜单里 —— 一行里塞两个功能，手机上必然误触
   li.addEventListener('click', () => {
+    if (shouldIgnoreClick()) return;
     if (closeMenuIfOpen()) return;
     detailIndex = index;
     render();
   });
 
-  const handle = createDragHandle();
-  makeDraggable(handle, li, findTaskContainerAt, () => commitTodoDrag(li));
-  li.appendChild(handle);
+  // 整行都能拖，不用去够某个小手柄
+  makeDraggable(li, findTaskContainerAt, () => commitTodoDrag(li));
 
   const checkbox = createCheckbox(todo, index);
 
@@ -468,11 +554,7 @@ function createTodoItem(todo, index) {
   const textSpan = document.createElement('span');
   textSpan.className = 'todo-text';
   textSpan.textContent = todo.text;
-  textSpan.addEventListener('click', (event) => {
-    event.stopPropagation();       // 不要进详情页
-    editingTaskIndex = index;
-    render();
-  });
+  // 这里不再拦点击：让它冒泡到整行，统一进详情页
 
   li.append(checkbox, textSpan, createPinButton(index), createTodoMenu(index));
   return li;

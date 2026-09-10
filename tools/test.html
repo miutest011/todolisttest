@@ -90,8 +90,9 @@
 <div id="summary" class="summary"></div>
 <div id="results"></div>
 
-<!-- app.js 在上一层目录，test-runner.js 和 tests.js 就在本目录 -->
-<script src="../app.js"></script>
+<!-- app.js 在上一层目录，test-runner.js 和 tests.js 就在本目录。
+     后面的 ?dev=1 是用来绕开 Service Worker 缓存的，保证测的永远是最新代码 -->
+<script src="../app.js?dev=1"></script>
 <script src="test-runner.js"></script>
 <script src="tests.js"></script>
 <script>

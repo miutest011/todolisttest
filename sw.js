@@ -1,7 +1,7 @@
 // Service Worker：把网页文件缓存到手机里，装成 App 之后离线也能打开。
 //
 // 重要：改完代码要把下面的版本号 +1，否则手机上还会用旧的缓存。
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE_NAME = `todolist-${VERSION}`;
 
 // 需要缓存的文件。只有这几个，附件和待办数据存在浏览器自己的数据库里，不归这里管
@@ -41,8 +41,13 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
+  // 带查询参数的请求一律放行，用来在开发时绕开缓存。
+  // 比如测试页加载的是 app.js?dev=1，这样永远拿到最新的代码 ——
+  // 否则你改完代码跑测试，读到的还是缓存里的旧版本，会白白查半天
+  if (url.search) return;
+
   // 只接管上面列出的那几个文件。
-  // 测试页（tools/ 里的东西）一律走网络，否则开发时会一直读到旧缓存，很容易被坑
+  // 测试页（tools/ 里的东西）一律走网络
   const isCached = FILES.some((file) => {
     const path = new URL(file, self.registration.scope).pathname;
     return path === url.pathname;

@@ -25,7 +25,6 @@
   /* 触屏设备上把图标按钮的点击热区放大。
      手指不像鼠标那么准，太小的按钮点不中 */
   @media (hover: none) {
-    .drag-handle,
     .pin-btn,
     .menu-btn,
     .icon-btn,
@@ -218,32 +217,41 @@
     transition: opacity 0.15s;
   }
 
-  .drag-handle {
-    flex-shrink: 0;
-    padding: 4px 5px;
-    margin-right: 2px;
-    font-size: 13px;
-    line-height: 1;
-    color: #ddd;
-    background: none;
-    border: none;
-    cursor: grab;
-    /* 手机上按住手柄拖动时，不要把页面一起滚走 */
-    touch-action: none;
+  /* 浮起来跟着手指走的那一份复制品 */
+  .drag-ghost {
+    position: fixed;
+    z-index: 1000;
+    margin: 0;
+    pointer-events: none;
+    transform: scale(1.03);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+    opacity: 0.96;
+    /* 阴影渐渐加深，做出"拿起来"的感觉。
+       transform 不要加过渡，否则跟手会有延迟 */
+    transition: box-shadow 0.2s;
   }
 
-  .drag-handle:hover {
-    color: #999;
+  /* 原地留下的占位：变淡，让人看清自己会落在哪 */
+  .drag-source {
+    opacity: 0.28;
   }
 
-  .drag-handle:active {
-    cursor: grabbing;
+  .drag-source .pin-btn,
+  .drag-source .menu-btn {
+    opacity: 0 !important;
   }
 
-  /* 正在被拖动的那一块，半透明一点，好看清自己拖到哪了 */
-  .todo-item.dragging,
-  .category.dragging {
-    opacity: 0.45;
+  /* 拖动时不要选中文字。输入框里还是要能选的 */
+  .todo-item,
+  .category-header {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .todo-item input,
+  .todo-item textarea {
+    user-select: text;
+    -webkit-user-select: text;
   }
 
   /* 空清单也要有一点高度，否则拖不进去 */
