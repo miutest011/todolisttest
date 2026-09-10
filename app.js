@@ -263,6 +263,17 @@ function useLongPressDelay(ms) {  // 测试时改成 0，免得每条测试都�
   longPressDelay = ms;
 }
 
+// 清单里任务的显示顺序：置顶的在最上面，然后是没做完的，做完的沉到最下面。
+// 列表渲染和拖拽算落点都用这一个函数，免得两边规则不一致导致拖动错位
+function displayOrderKey(todo) {
+  if (todo.done) return 2;
+  return todo.pinned ? 0 : 1;
+}
+
+function compareForDisplay(a, b) {
+  return displayOrderKey(a) - displayOrderKey(b);
+}
+
 // 找出应该插到哪个元素前面：第一个"中线在指针下方"的元素。
 // 都不满足就返回 null，表示放到最后
 function findDropTarget(container, pointerY, dragging) {
@@ -445,8 +456,8 @@ function createCategorySection(category) {
       }
     });
 
-    // 置顶的排到前面。sort 是稳定的，所以没置顶的之间保持原有顺序
-    items.sort((a, b) => (b.todo.pinned ? 1 : 0) - (a.todo.pinned ? 1 : 0));
+    // 置顶的在上、做完的沉底。sort 是稳定的，所以同一档之间保持原有顺序
+    items.sort((a, b) => compareForDisplay(a.todo, b.todo));
 
     items.forEach((item) => {
       list.appendChild(createTodoItem(item.todo, item.index));
@@ -556,16 +567,22 @@ function createTodoItem(todo, index) {
   textSpan.textContent = todo.text;
   // 这里不再拦点击：让它冒泡到整行，统一进详情页
 
-  li.append(checkbox, textSpan, createPinButton(index), createTodoMenu(index));
+  li.append(checkbox, textSpan);
+  // 做完的任务永远沉在最下面，置顶按钮对它没有意义，就不显示了
+  if (!todo.done) {
+    li.appendChild(createPinButton(index));
+  }
+  li.appendChild(createTodoMenu(index));
   return li;
 }
 
-// 置顶按钮，放在三个点前面。已置顶时常亮，没置顶时鼠标移上去才显现
+// 置顶按钮，放在三个点前面。已置顶时常亮，没置顶时鼠标移上去才显现。
+// 用文字箭头而不是 emoji：emoji 在手机上是彩色的，跟这套灰白界面不搭
 function createPinButton(index) {
   const todo = todos[index];
   const btn = document.createElement('button');
   btn.className = todo.pinned ? 'pin-btn pinned' : 'pin-btn';
-  btn.textContent = '📌';
+  btn.textContent = '↑';
   btn.title = todo.pinned ? '取消置顶' : '置顶';
   btn.addEventListener('click', (event) => {
     event.stopPropagation();     // 不要进详情页
@@ -860,7 +877,11 @@ function createDetailPage(index) {
       editingTaskIndex = index;
       render();
     });
-    card.append(title, createPinButton(index), createTodoMenu(index));
+    card.appendChild(title);
+    if (!todo.done) {
+      card.appendChild(createPinButton(index));
+    }
+    card.appendChild(createTodoMenu(index));
   }
 
   page.append(back, card);
@@ -1164,7 +1185,14 @@ function toggleCollapse(category) {
 }
 
 function toggleTodo(index) {
-  todos[index].done = !todos[index].done;
+  const todo = todos[index];
+  todo.done = !todo.done;
+
+  // 做完了就沉到清单最下面，置顶自然也就没意义了，顺手取消掉
+  if (todo.done) {
+    todo.pinned = false;
+  }
+
   saveTodos();
   render();
 }
@@ -1280,8 +1308,8 @@ function moveTodoToPosition(fromIndex, targetCategory, position) {
     const items = rest.filter((todo) => todo.category === category);
 
     if (category === targetCategory) {
-      // 页面上置顶的排在前面，位置要按这个顺序来数
-      items.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+      // 位置是按页面上看到的顺序数的，所以这里要用同一套排序规则
+      items.sort(compareForDisplay);
       const at = Math.max(0, Math.min(position, items.length));
       items.splice(at, 0, moved);
     }

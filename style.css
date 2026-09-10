@@ -88,9 +88,13 @@
     color: #bbb;
   }
 
+  /* 清单名比任务文字大一号、更粗、更深，
+     这样一眼就能看出"清单是标题、任务是内容"的层级 */
   .category-name {
-    font-size: 15px;
-    font-weight: 600;
+    font-size: 17px;
+    font-weight: 700;
+    color: #1f1f1f;
+    letter-spacing: 0.3px;
   }
 
   .category-count {
@@ -109,39 +113,42 @@
     cursor: pointer;
   }
 
+  /* 小方框，比原来的圆点收敛一些 */
   .checkbox {
-    width: 20px;
-    height: 20px;
+    width: 17px;
+    height: 17px;
     flex-shrink: 0;
     margin-right: 12px;
-    border: 2px solid #d0d0d0;
-    border-radius: 50%;
+    border: 1.5px solid #d3d3d3;
+    border-radius: 4px;
     background: white;
     cursor: pointer;
     position: relative;
   }
 
   .checkbox:hover {
-    border-color: #4a90e2;
+    border-color: #999;
   }
 
+  /* 已完成的用灰色的勾，不再用蓝色实心块。
+     做完的事已经不是重点了，不该比没做的更抢眼 */
   .checkbox.checked {
-    background: #4a90e2;
-    border-color: #4a90e2;
+    background: #fafafa;
+    border-color: #dcdcdc;
   }
 
   .checkbox.checked::after {
     content: '✓';
     position: absolute;
-    top: -3px;
-    left: 3px;
-    color: white;
+    top: -4px;
+    left: 2px;
+    color: #b0b0b0;
     font-size: 13px;
   }
 
   .todo-text {
     flex: 1;
-    font-size: 15px;
+    font-size: 14px;
   }
 
   .todo-item.done .todo-text {
@@ -261,17 +268,20 @@
 
   .pin-btn {
     flex-shrink: 0;
-    padding: 4px;
-    font-size: 13px;
+    padding: 4px 6px;
+    font-size: 15px;
+    line-height: 1;
+    color: #c8c8c8;
     background: none;
     border: none;
     cursor: pointer;
-    opacity: 0.45;
-    transition: opacity 0.15s;
+    opacity: 0.9;
+    transition: opacity 0.15s, color 0.15s;
   }
 
-  /* 已置顶的常亮，一眼能看出哪些被置顶了 */
+  /* 已置顶的用更深的灰色，一眼能看出哪些被置顶了 */
   .pin-btn.pinned {
+    color: #666;
     opacity: 1;
   }
 

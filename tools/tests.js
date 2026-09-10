@@ -437,9 +437,12 @@ test('界面：已完成的任务带 done 样式，标题只数未完成的', ()
     ]
   });
 
-  const items = root.querySelectorAll('.todo-item');
-  assert(items[0].classList.contains('done'), '已完成的任务应该有 done 样式类');
-  assert(!items[1].classList.contains('done'), '未完成的任务不该有 done 样式类');
+  // 按文字找，不要假设它们排在第几位 —— 排序规则以后还可能变
+  const itemNamed = (text) => [...root.querySelectorAll('.todo-item')]
+    .find((li) => li.querySelector('.todo-text').textContent === text);
+
+  assert(itemNamed('写周报').classList.contains('done'), '已完成的任务应该有 done 样式类');
+  assert(!itemNamed('开会').classList.contains('done'), '未完成的任务不该有 done 样式类');
   assertEqual(root.querySelector('.category-count').textContent, '1', '标题上的数字应该只数未完成的');
 });
 
@@ -1143,6 +1146,112 @@ test('置顶：点列表里的置顶按钮就能切换', () => {
   assertEqual(todos[0].pinned, true, '点按钮应该置顶');
   assertEqual(detailIndex, null, '点置顶按钮不该跳进详情页');
   assert(root.querySelector('.pin-btn').classList.contains('pinned'), '置顶后按钮应该是高亮状态');
+});
+
+
+// ========== 完成的任务沉到最下面 ==========
+
+test('完成排序：做完的任务沉到清单最下面', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [
+      { text: 'A', done: false, category: '工作' },
+      { text: 'B', done: false, category: '工作' },
+      { text: 'C', done: false, category: '工作' }
+    ]
+  });
+
+  toggleTodo(0);   // 把 A 标记为完成
+
+  assertEqual(textsOf(root, '.todo-text'), ['B', 'C', 'A'], '做完的应该沉到最下面');
+});
+
+test('完成排序：未完成的之间保持原来的顺序', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [
+      { text: 'A', done: false, category: '工作' },
+      { text: 'B', done: true, category: '工作' },
+      { text: 'C', done: false, category: '工作' },
+      { text: 'D', done: true, category: '工作' }
+    ]
+  });
+
+  assertEqual(textsOf(root, '.todo-text'), ['A', 'C', 'B', 'D'], '未完成的在上、已完成的在下，各自保持原顺序');
+});
+
+test('完成排序：置顶 > 未完成 > 已完成', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [
+      { text: '普通', done: false, category: '工作' },
+      { text: '做完的', done: true, category: '工作' },
+      { text: '置顶的', done: false, category: '工作', pinned: true }
+    ]
+  });
+
+  assertEqual(textsOf(root, '.todo-text'), ['置顶的', '普通', '做完的'], '三档顺序不对');
+});
+
+test('完成排序：标记完成时会自动取消置顶', () => {
+  const { storage } = setup({
+    categories: ['工作'],
+    todos: [{ text: '写周报', done: false, category: '工作', pinned: true }]
+  });
+
+  toggleTodo(0);
+
+  assertEqual(todos[0].pinned, false, '做完了就该取消置顶，否则置顶状态留着也没用');
+  assertEqual(stored(storage, 'todos')[0].pinned, false, '取消置顶要保存下来');
+});
+
+test('完成排序：已完成的任务不显示置顶按钮', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [
+      { text: '没做完', done: false, category: '工作' },
+      { text: '做完了', done: true, category: '工作' }
+    ]
+  });
+
+  const items = [...root.querySelectorAll('.todo-item')];
+  assert(items[0].querySelector('.pin-btn'), '未完成的应该有置顶按钮');
+  assertEqual(items[1].querySelector('.pin-btn'), null, '已完成的置顶按钮没有意义，不该显示');
+});
+
+test('完成排序：取消完成后回到未完成那一档', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [
+      { text: 'A', done: false, category: '工作' },
+      { text: 'B', done: true, category: '工作' }
+    ]
+  });
+
+  toggleTodo(1);   // 把 B 改回未完成
+
+  assertEqual(textsOf(root, '.todo-text'), ['A', 'B'], 'B 应该回到未完成那一档');
+  assertEqual(todos[1].done, false, '状态应该改回来了');
+});
+
+test('完成排序：拖拽落点和页面看到的顺序一致', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [
+      { text: '普通', done: false, category: '工作' },
+      { text: '做完的', done: true, category: '工作' },
+      { text: '置顶的', done: false, category: '工作', pinned: true }
+    ]
+  });
+  // 页面上是：置顶的、普通、做完的
+  assertEqual(textsOf(root, '.todo-text'), ['置顶的', '普通', '做完的'], '先确认初始顺序');
+
+  // 把"普通"（页面上第 2 个）拖到第 1 个位置
+  const items = [...root.querySelectorAll('.todo-item')];
+  moveTodoToPosition(Number(items[1].dataset.index), '工作', 0);
+
+  // "普通"没置顶，所以会落在置顶的下面 —— 这是规则决定的，不是 bug
+  assertEqual(textsOf(root, '.todo-text'), ['置顶的', '普通', '做完的'], '置顶的优先级更高，普通任务插不到它上面');
 });
 
 

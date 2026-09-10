@@ -1,7 +1,7 @@
 // Service Worker：把网页文件缓存到手机里，装成 App 之后离线也能打开。
 //
 // 重要：改完代码要把下面的版本号 +1，否则手机上还会用旧的缓存。
-const VERSION = 'v2';
+const VERSION = 'v3';
 const CACHE_NAME = `todolist-${VERSION}`;
 
 // 需要缓存的文件。只有这几个，附件和待办数据存在浏览器自己的数据库里，不归这里管
@@ -57,20 +57,29 @@ self.addEventListener('fetch', (event) => {
     return;   // 不处理，交给浏览器正常走网络
   }
 
-  // 先给缓存里的（离线也能开、打开也快），同时在后台悄悄更新一份供下次使用
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const fromNetwork = fetch(event.request)
-        .then((response) => {
-          if (response && response.ok) {
-            const copy = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-          }
-          return response;
-        })
-        .catch(() => cached);   // 没网就用缓存
+  // 本地开发时（localhost）用"网络优先"：永远拿最新的代码，拿不到才退回缓存。
+  // 不这么做的话，你改完代码刷新页面看到的还是旧版本，会白白查很久 —— 这个坑踩过好几次了。
+  // 线上（手机上装的那份）仍然是缓存优先，打开快、离线也能用
+  const isLocalDev = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
 
-      return cached || fromNetwork;
-    })
+  const fromNetwork = fetch(event.request)
+    .then((response) => {
+      if (response && response.ok) {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+      }
+      return response;
+    });
+
+  if (isLocalDev) {
+    event.respondWith(fromNetwork.catch(() => caches.match(event.request)));
+    return;
+  }
+
+  // 先给缓存里的，同时在后台悄悄更新一份供下次使用
+  event.respondWith(
+    caches.match(event.request).then(
+      (cached) => cached || fromNetwork.catch(() => cached)
+    )
   );
 });
