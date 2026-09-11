@@ -18,7 +18,12 @@ function onCleanup(fn) {
   cleanups.push(fn);
 }
 
+// 数一数每条测试到底做了几次断言。
+// 一次都没有的测试是"假测试"：看着有，其实什么都没验证
+let assertionCount = 0;
+
 function assert(condition, message) {
+  assertionCount++;
   if (!condition) {
     throw new Error(message || '断言失败：期望条件为真');
   }
@@ -26,6 +31,7 @@ function assert(condition, message) {
 
 // 用 JSON 比较，所以数组和对象也能直接比
 function assertEqual(actual, expected, message) {
+  assertionCount++;
   const actualText = JSON.stringify(actual);
   const expectedText = JSON.stringify(expected);
   if (actualText !== expectedText) {
@@ -61,15 +67,17 @@ function createMemoryBlobStore() {
   };
 }
 
+// 把所有测试跑一遍，返回每条的结果。不碰页面
+//
 // 测试函数可以是普通函数，也可以是 async 函数（附件相关的测试要等异步操作完成）。
 // await 一个普通返回值也是合法的，所以两种写法都能跑
-async function runTests(outputEl, summaryEl) {
-  outputEl.innerHTML = '';
-  let passed = 0;
-  let failed = 0;
+async function runOnce() {
+  const results = [];
 
   for (const { name, fn } of tests) {
+    assertionCount = 0;
     let error = null;
+
     try {
       await fn();
     } catch (e) {
@@ -87,25 +95,80 @@ async function runTests(outputEl, summaryEl) {
       }
     }
 
-    const row = document.createElement('div');
-    if (error) {
-      failed++;
-      row.className = 'result fail';
-      row.textContent = '✗ ' + name;
-      const detail = document.createElement('pre');
-      detail.className = 'error';
-      detail.textContent = error.message;
-      row.appendChild(detail);
-    } else {
-      passed++;
-      row.className = 'result pass';
-      row.textContent = '✓ ' + name;
-    }
-    outputEl.appendChild(row);
+    results.push({ name: name, error: error, assertions: assertionCount });
   }
 
-  summaryEl.className = failed > 0 ? 'summary fail' : 'summary pass';
-  summaryEl.textContent = failed > 0
-    ? `${failed} 条失败，${passed} 条通过（共 ${tests.length} 条）`
-    : `全部通过：${passed} 条（共 ${tests.length} 条）`;
+  return results;
+}
+
+async function runTests(outputEl, summaryEl) {
+  outputEl.innerHTML = '';
+  summaryEl.className = 'summary';
+  summaryEl.textContent = '正在运行……';
+
+  // 连跑两遍。
+  // 为什么：如果某条测试改了全局状态却没还原，第一遍常常看不出来，
+  // 要等下一遍才会露馅 —— 这种"结果取决于执行顺序"的问题最难查。
+  // 让它每次都自动暴露，比指望哪天碰巧发现要靠谱
+  const first = await runOnce();
+  const second = await runOnce();
+
+  const unstable = first.filter(
+    (result, index) => Boolean(result.error) !== Boolean(second[index].error)
+  );
+
+  const failed = first.filter((result) => result.error).length;
+  const passed = first.length - failed;
+  // 通过了但一次断言都没做 —— 这种测试等于没写
+  const empty = first.filter((result) => !result.error && result.assertions === 0);
+
+  // 两遍结果不一致时，最要紧的是先说这件事
+  if (unstable.length > 0) {
+    const warning = document.createElement('div');
+    warning.className = 'banner';
+    warning.textContent =
+      '⚠️ 连跑两遍结果不一样，说明测试之间有状态泄漏（某条测试改了全局状态没还原）：'
+      + unstable.map((result) => result.name).join('、');
+    outputEl.appendChild(warning);
+  }
+
+  if (empty.length > 0) {
+    const warning = document.createElement('div');
+    warning.className = 'banner';
+    warning.textContent =
+      '⚠️ 下面这些测试一次断言都没做，等于没测：'
+      + empty.map((result) => result.name).join('、');
+    outputEl.appendChild(warning);
+  }
+
+  first.forEach((result) => {
+    const row = document.createElement('div');
+
+    if (result.error) {
+      row.className = 'result fail';
+      row.textContent = '✗ ' + result.name;
+      const detail = document.createElement('pre');
+      detail.className = 'error';
+      detail.textContent = result.error.message;
+      row.appendChild(detail);
+    } else if (result.assertions === 0) {
+      row.className = 'result warn';
+      row.textContent = '⚠ ' + result.name + '（没有任何断言）';
+    } else {
+      row.className = 'result pass';
+      row.textContent = '✓ ' + result.name;
+    }
+
+    outputEl.appendChild(row);
+  });
+
+  const problems = [];
+  if (failed > 0) problems.push(`${failed} 条失败`);
+  if (unstable.length > 0) problems.push(`${unstable.length} 条结果不稳定`);
+  if (empty.length > 0) problems.push(`${empty.length} 条没有断言`);
+
+  summaryEl.className = problems.length > 0 ? 'summary fail' : 'summary pass';
+  summaryEl.textContent = problems.length > 0
+    ? `${problems.join('，')}（共 ${tests.length} 条）`
+    : `全部通过：${passed} 条（共 ${tests.length} 条，已连跑两遍）`;
 }
