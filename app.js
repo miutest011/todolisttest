@@ -105,6 +105,8 @@ let detailIndex = null;     // 正在看哪条任务的详情页（null = 看列
 let editingDueFor = null;   // 正在给哪条任务设置截止时间
 let attachmentError = null; // 附件保存失败时的提示文字
 let expandedGroups = [];    // 哪些"已完成/已放弃"分组是展开的，只记在内存里
+let currentTab = 'tasks';   // 底部标签栏当前在哪一页：tasks（清单）/ today（今天）
+let suppressNextClick = false;  // 拖动结束后紧跟着的那一次点击要忽略掉
 
 // 把"临时"的界面状态清空（数据状态不动）
 function resetViewState() {
@@ -117,6 +119,8 @@ function resetViewState() {
   editingDueFor = null;
   attachmentError = null;
   expandedGroups = [];
+  currentTab = 'tasks';      // 每次打开都从"清单"页开始
+  suppressNextClick = false; // 万一上一次拖拽没正常收尾，别把下一次点击也吞掉
 }
 
 // 启动：把应用挂到某个页面元素上，读出数据，画出来
@@ -231,17 +235,13 @@ function render() {
   releaseObjectUrls();
   appEl.innerHTML = '';
 
+  // 详情页是"盖在上面"的一层，这时不显示底部标签栏，
+  // 靠"← 返回"退回来，导航层级更清楚
   if (detailIndex !== null) {
     appEl.appendChild(createDetailPage(detailIndex));
   } else {
-    // 清单单独放一个容器里，拖拽排序时要靠它来算位置
-    const categoryList = document.createElement('div');
-    categoryList.id = 'category-list';
-    categories.forEach((category) => {
-      categoryList.appendChild(createCategorySection(category));
-    });
-    appEl.appendChild(categoryList);
-    appEl.appendChild(createNewCategoryRow());
+    appEl.appendChild(currentTab === 'today' ? createTodayView() : createTasksView());
+    appEl.appendChild(createTabBar());
   }
 
   // 页面重画会让输入框消失，画完之后要把光标重新放回去
@@ -408,9 +408,6 @@ function makeDraggable(handle, findContainer, onDrop, movedElement) {
   });
 }
 
-// 拖动结束后紧跟着的那一次点击要忽略掉
-let suppressNextClick = false;
-
 function shouldIgnoreClick() {
   if (!suppressNextClick) return false;
   suppressNextClick = false;
@@ -447,6 +444,146 @@ function commitTodoDrag(item) {
 function commitCategoryDrag() {
   const container = appEl.querySelector('#category-list');
   applyCategoryOrder([...container.children].map((section) => section.dataset.category));
+}
+
+// ---- 底部标签栏 ----
+const TABS = [
+  { key: 'tasks', label: '清单', icon: 'list' },
+  { key: 'today', label: '今天', icon: 'calendar' }
+];
+
+function createTabBar() {
+  const bar = document.createElement('nav');
+  bar.className = 'tab-bar';
+
+  TABS.forEach((tab) => {
+    const btn = document.createElement('button');
+    btn.className = currentTab === tab.key ? 'tab active' : 'tab';
+    btn.dataset.tab = tab.key;
+    btn.addEventListener('click', () => {
+      if (closeMenuIfOpen()) return;
+      currentTab = tab.key;
+      render();
+    });
+
+    const label = document.createElement('span');
+    label.className = 'tab-label';
+    label.textContent = tab.label;
+
+    btn.append(createIcon(tab.icon, 'tab-icon'), label);
+    bar.appendChild(btn);
+  });
+
+  return bar;
+}
+
+// ---- "清单"标签页：原来的整个页面 ----
+// 这一页不放大标题：点进 App 之前就知道这是待办清单了，
+// 再写一遍"我的待办清单"只是白占地方
+function createTasksView() {
+  const view = document.createElement('div');
+
+  // 清单单独放一个容器里，拖拽排序时要靠它来算位置
+  const categoryList = document.createElement('div');
+  categoryList.id = 'category-list';
+  categories.forEach((category) => {
+    categoryList.appendChild(createCategorySection(category));
+  });
+
+  view.appendChild(categoryList);
+  view.appendChild(createNewCategoryRow());
+  return view;
+}
+
+// ---- "今天"标签页 ----
+// 把所有清单里今天到期和已经过期的任务汇总到一起。
+// 不需要新的数据结构，就是对现有的 dueAt 做一次筛选
+function startOfToday() {
+  const now = nowFn();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+}
+
+function createTodayView() {
+  const view = document.createElement('div');
+  view.className = 'today-view';
+
+  const dayStart = startOfToday();
+  const dayEnd = dayStart + 24 * 60 * 60 * 1000;   // 明天零点
+
+  const overdue = [];
+  const today = [];
+
+  todos.forEach((todo, index) => {
+    if (todo.status !== 'active') return;   // 做完的和放弃的不用再操心
+    if (!todo.dueAt) return;                // 没设截止时间的不算"今天要做"
+
+    const due = new Date(todo.dueAt).getTime();
+    if (due < dayStart) {
+      overdue.push({ todo: todo, index: index });
+    } else if (due < dayEnd) {
+      today.push({ todo: todo, index: index });
+    }
+  });
+
+  // "今天"页保留标题：它说明的是"你正在看哪一页"，不是 App 名字
+  const title = document.createElement('h1');
+  title.textContent = '今天';
+  view.appendChild(title);
+
+  const date = document.createElement('div');
+  date.className = 'view-subtitle';
+  date.textContent = formatDate(nowFn());
+  view.appendChild(date);
+
+  if (overdue.length === 0 && today.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.textContent = '今天没有到期的任务。给任务设置截止时间后，它们会出现在这里。';
+    view.appendChild(empty);
+    return view;
+  }
+
+  if (overdue.length > 0) {
+    view.appendChild(createTodaySection('已过期', overdue, 'overdue'));
+  }
+  if (today.length > 0) {
+    view.appendChild(createTodaySection('今天到期', today, ''));
+  }
+
+  return view;
+}
+
+function createTodaySection(label, items, extraClass) {
+  const box = document.createElement('section');
+  box.className = 'today-section';
+
+  const header = document.createElement('div');
+  header.className = extraClass ? 'today-section-title ' + extraClass : 'today-section-title';
+  header.textContent = `${label} ${items.length}`;
+  box.appendChild(header);
+
+  const list = document.createElement('ul');
+  items.forEach((item) => {
+    // 这一页的任务来自不同清单，所以关掉拖拽（这里没有"顺序"可言），
+    // 并且额外标出它属于哪个清单
+    const li = createTodoItem(item.todo, item.index, { draggable: false });
+
+    const meta = document.createElement('span');
+    meta.className = 'todo-meta';
+    meta.textContent = item.todo.category + ' · ' + formatDateTime(item.todo.dueAt).slice(11);
+    li.insertBefore(meta, li.querySelector('.pin-btn') || li.querySelector('.menu-anchor'));
+
+    list.appendChild(li);
+  });
+  box.appendChild(list);
+
+  return box;
+}
+
+function formatDate(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+  const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${weekdays[date.getDay()]}`;
 }
 
 // 一个清单区块：标题栏 + 任务列表 + "添加任务"那一行
@@ -589,7 +726,7 @@ function createCategoryHeader(category, section) {
 }
 
 // 一条任务：勾选框 + 文字 + 三点菜单，点空白处进详情页
-function createTodoItem(todo, index) {
+function createTodoItem(todo, index, options = {}) {
   const li = document.createElement('li');
   li.className = 'todo-item';
   li.dataset.index = index;      // 拖拽松手时靠它认出这是哪一条任务
@@ -605,8 +742,11 @@ function createTodoItem(todo, index) {
     render();
   });
 
-  // 整行都能拖，不用去够某个小手柄
-  makeDraggable(li, findTaskContainerAt, () => commitTodoDrag(li));
+  // 整行都能拖，不用去够某个小手柄。
+  // "今天"那一页的任务来自不同清单，排序无从谈起，所以在那里关掉拖拽
+  if (options.draggable !== false) {
+    makeDraggable(li, findTaskContainerAt, () => commitTodoDrag(li));
+  }
 
   const checkbox = createCheckbox(todo, index);
 
@@ -665,7 +805,9 @@ function createPinButton(index) {
 const ICON_PATHS = {
   check: 'M20 6L9 17l-5-5',
   cross: 'M18 6L6 18M6 6l12 12',
-  arrowUp: 'M12 19V5M5 12l7-7 7 7'
+  arrowUp: 'M12 19V5M5 12l7-7 7 7',
+  list: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
+  calendar: 'M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2zM16 2v4M8 2v4M3 10h18'
 };
 
 function createIcon(name, className) {

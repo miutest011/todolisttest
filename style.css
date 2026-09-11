@@ -65,6 +65,8 @@
     max-width: 480px;
     margin: 60px auto;   /* 页面级留白，故意不走间距刻度 */
     padding: 0 var(--space-4);
+    /* 给固定在底部的标签栏让出位置，否则最后一条会被盖住 */
+    padding-bottom: 80px;
     background: var(--surface);
     color: var(--text-body);
     /* 装成 App 全屏运行时，别被刘海和底部横条挡住 */
@@ -123,6 +125,91 @@
     list-style: none;
     padding: 0;
     margin: 0;
+  }
+
+  /* ---- 底部标签栏 ---- */
+  .tab-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 100;
+    display: flex;
+    max-width: 480px;
+    margin: 0 auto;
+    background: var(--surface);
+    border-top: 1px solid var(--divider);
+    /* 别被 iPhone 底部的横条盖住 */
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .tab {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-2) 0 var(--space-1);
+    color: var(--text-subtle);
+    background: none;
+    border: none;
+    cursor: pointer;
+  }
+
+  .tab.active {
+    color: var(--accent);
+  }
+
+  .tab-icon {
+    width: 22px;
+    height: 22px;
+  }
+
+  .tab-label {
+    font-size: var(--text-xs);
+  }
+
+  /* ---- "今天"页 ---- */
+  /* 标题用页面统一的 h1 样式，日期跟在下面 */
+  .view-subtitle {
+    margin: calc(var(--space-6) * -1) 0 var(--space-6);
+    font-size: var(--text-sm);
+    color: var(--text-subtle);
+    text-align: center;
+  }
+
+  .today-section {
+    margin-bottom: var(--space-6);
+  }
+
+  .today-section-title {
+    margin-bottom: var(--space-2);
+    padding: 0 var(--space-1);
+    font-size: var(--text-xs);
+    color: var(--text-subtle);
+  }
+
+  /* 过期的用警示色，一眼能看出来 */
+  .today-section-title.overdue {
+    color: var(--danger);
+  }
+
+  /* 这一页的任务来自不同清单，所以标出它属于哪个清单、几点到期 */
+  .todo-meta {
+    flex-shrink: 0;
+    margin-left: var(--space-2);
+    font-size: var(--text-xs);
+    color: var(--text-faint);
+  }
+
+  .empty-state {
+    padding: var(--space-6) var(--space-4);
+    font-size: var(--text-sm);
+    line-height: 1.7;
+    color: var(--text-faint);
+    text-align: center;
+    border: 1px dashed var(--border-soft);
+    border-radius: var(--radius-lg);
   }
 
   .category {
