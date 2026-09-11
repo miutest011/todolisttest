@@ -17,11 +17,14 @@ function setup(data = {}) {
   if (data.categories) storage.setItem('categories', JSON.stringify(data.categories));
   if (data.todos) storage.setItem('todos', JSON.stringify(data.todos));
   if (data.collapsed) storage.setItem('collapsed', JSON.stringify(data.collapsed));
+  if (data.logItems) storage.setItem('logItems', JSON.stringify(data.logItems));
 
   useStorage(storage);
   useConfirm(() => true);           // 默认"用户点了确定"，需要时在测试里改
   useNow(() => new Date(FIXED_NOW)); // 把时间冻住
   useLongPressDelay(0);              // 长按判定改成 0，测试不用真等半秒
+  // 撤销提示的时长恢复默认。有测试会把它改短，不还原的话会泄漏到后面的测试里
+  useToastDuration(4000);
 
   // 假的通知：把弹过的内容记下来，不会真的弹到你屏幕上
   const notifications = [];
@@ -2006,6 +2009,20 @@ test('自检：条件为假时 assert 确实会报错', () => {
     threw = true;
   }
   assert(threw, 'assert 必须在条件为假时抛错');
+});
+
+test('自检：skip() 发出的是"跳过"信号，不是普通的失败', () => {
+  let signal = null;
+  try {
+    skip('演示用');
+  } catch (e) {
+    signal = e;
+  }
+
+  assert(signal !== null, 'skip() 必须中断这条测试');
+  assertEqual(signal.skipped, true, '要带上 skipped 标记，运行器才能把"跳过"和真正的失败区分开');
+  assertEqual(outcomeOf({ skipped: true, error: null }), 'skip', '运行器要把它算成"跳过"');
+  assertEqual(outcomeOf({ skipped: false, error: new Error('x') }), 'fail', '普通错误还是算失败');
 });
 
 test('自检：异步测试失败时不会被悄悄吞掉', async () => {

@@ -67,6 +67,16 @@ function createMemoryBlobStore() {
   };
 }
 
+// 有些检查只能在特定环境下跑 —— 比如要读项目里的文件，
+// 双击打开测试页（file://）时浏览器不让读。
+// 这时调用 skip('原因')：这条测试显示成"跳过"，既不算失败，
+// 也不会被当成"没有断言"的假测试
+function skip(reason) {
+  const signal = new Error(reason);
+  signal.skipped = true;
+  throw signal;
+}
+
 // 把所有测试跑一遍，返回每条的结果。不碰页面
 //
 // 测试函数可以是普通函数，也可以是 async 函数（附件相关的测试要等异步操作完成）。
@@ -95,10 +105,23 @@ async function runOnce() {
       }
     }
 
-    results.push({ name: name, error: error, assertions: assertionCount });
+    const skipped = Boolean(error && error.skipped);
+    results.push({
+      name: name,
+      error: skipped ? null : error,
+      skipped: skipped,
+      skipReason: skipped ? error.message : '',
+      assertions: assertionCount
+    });
   }
 
   return results;
+}
+
+// 一条测试的结局：通过 / 失败 / 跳过
+function outcomeOf(result) {
+  if (result.skipped) return 'skip';
+  return result.error ? 'fail' : 'pass';
 }
 
 async function runTests(outputEl, summaryEl) {
@@ -114,13 +137,14 @@ async function runTests(outputEl, summaryEl) {
   const second = await runOnce();
 
   const unstable = first.filter(
-    (result, index) => Boolean(result.error) !== Boolean(second[index].error)
+    (result, index) => outcomeOf(result) !== outcomeOf(second[index])
   );
 
-  const failed = first.filter((result) => result.error).length;
-  const passed = first.length - failed;
+  const failed = first.filter((result) => outcomeOf(result) === 'fail').length;
+  const skippedCount = first.filter((result) => result.skipped).length;
+  const passed = first.length - failed - skippedCount;
   // 通过了但一次断言都没做 —— 这种测试等于没写
-  const empty = first.filter((result) => !result.error && result.assertions === 0);
+  const empty = first.filter((result) => outcomeOf(result) === 'pass' && result.assertions === 0);
 
   // 两遍结果不一致时，最要紧的是先说这件事
   if (unstable.length > 0) {
@@ -151,6 +175,9 @@ async function runTests(outputEl, summaryEl) {
       detail.className = 'error';
       detail.textContent = result.error.message;
       row.appendChild(detail);
+    } else if (result.skipped) {
+      row.className = 'result skip';
+      row.textContent = '○ ' + result.name + '（跳过：' + result.skipReason + '）';
     } else if (result.assertions === 0) {
       row.className = 'result warn';
       row.textContent = '⚠ ' + result.name + '（没有任何断言）';
@@ -167,8 +194,11 @@ async function runTests(outputEl, summaryEl) {
   if (unstable.length > 0) problems.push(`${unstable.length} 条结果不稳定`);
   if (empty.length > 0) problems.push(`${empty.length} 条没有断言`);
 
+  // "跳过"不算问题，但要写出来 —— 免得你以为那几条也验证过了
+  const skippedNote = skippedCount > 0 ? `，跳过 ${skippedCount} 条` : '';
+
   summaryEl.className = problems.length > 0 ? 'summary fail' : 'summary pass';
   summaryEl.textContent = problems.length > 0
-    ? `${problems.join('，')}（共 ${tests.length} 条）`
-    : `全部通过：${passed} 条（共 ${tests.length} 条，已连跑两遍）`;
+    ? `${problems.join('，')}${skippedNote}（共 ${tests.length} 条）`
+    : `全部通过：${passed} 条${skippedNote}（共 ${tests.length} 条，已连跑两遍）`;
 }

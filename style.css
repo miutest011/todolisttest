@@ -212,6 +212,237 @@
     border-radius: var(--radius-lg);
   }
 
+  /* ---- "打卡"页 ---- */
+  .logs-view .empty-state {
+    margin-bottom: var(--space-3);
+  }
+
+  .log-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+    margin-bottom: var(--space-2);
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .log-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .log-name {
+    display: block;
+    font-size: var(--text-base);
+    color: var(--text-body);
+  }
+
+  .log-meta {
+    display: block;
+    margin-top: var(--space-1);
+    font-size: var(--text-xs);
+    color: var(--text-subtle);
+  }
+
+  /* 右边的大数字：点一下记一次。做得大一些，手指好点准 */
+  .log-count {
+    flex-shrink: 0;
+    min-width: 48px;
+    height: 48px;
+    padding: 0 var(--space-3);
+    font-size: var(--text-lg);
+    font-weight: 700;
+    color: var(--accent);
+    background: var(--surface-sunken);
+    border: 1.5px solid var(--border-soft);
+    border-radius: 999px;
+    cursor: pointer;
+  }
+
+  .log-count:active {
+    background: var(--border-soft);
+  }
+
+  .new-log-btn {
+    width: 100%;
+    padding: var(--space-3);
+    font-size: var(--text-base);
+    color: var(--text-subtle);
+    background: none;
+    border: 1px dashed var(--border-soft);
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+  }
+
+  .new-log-btn:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  /* 打完卡时浮在标签栏上方的"撤销"提示 */
+  .undo-toast {
+    position: fixed;
+    left: 50%;
+    bottom: calc(76px + env(safe-area-inset-bottom));
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+    font-size: var(--text-sm);
+    color: var(--surface);
+    white-space: nowrap;
+    background: var(--text-body);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-menu);
+    transform: translateX(-50%);
+  }
+
+  .undo-btn {
+    padding: var(--space-1) var(--space-3);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--accent);
+    background: none;
+    border: none;
+    cursor: pointer;
+  }
+
+  /* ---- 打卡详情页：月历和记录 ---- */
+  .log-calendar {
+    margin-top: var(--space-5);
+    padding: var(--space-4);
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+  }
+
+  .calendar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-3);
+  }
+
+  .calendar-title {
+    font-size: var(--text-md);
+    font-weight: 600;
+    color: var(--text-title);
+  }
+
+  .calendar-nav {
+    padding: var(--space-1) var(--space-3);
+    font-size: var(--text-lg);
+    color: var(--text-subtle);
+    background: none;
+    border: none;
+    cursor: pointer;
+  }
+
+  .calendar-weekdays,
+  .calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    text-align: center;
+  }
+
+  .calendar-weekday {
+    padding-bottom: var(--space-2);
+    font-size: var(--text-xs);
+    color: var(--text-faint);
+  }
+
+  .calendar-cell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 40px;
+    font-size: var(--text-sm);
+    color: var(--text-body);
+  }
+
+  .calendar-day {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+  }
+
+  .calendar-cell.today .calendar-day {
+    border: 1.5px solid var(--accent);
+  }
+
+  /* 打过卡的日子涂上主色 */
+  .calendar-cell.logged .calendar-day {
+    color: var(--surface);
+    background: var(--accent);
+  }
+
+  /* 同一天打了几次：右上角的小数字 */
+  .calendar-count {
+    position: absolute;
+    top: 0;
+    right: var(--space-1);
+    box-sizing: border-box;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 var(--space-1);
+    font-size: var(--text-xs);
+    line-height: 16px;
+    color: var(--surface);
+    background: var(--danger);
+    border-radius: 999px;
+  }
+
+  .log-entries {
+    margin-top: var(--space-2);
+  }
+
+  .log-entry {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-2) var(--space-1);
+    font-size: var(--text-sm);
+    color: var(--text-body);
+    border-bottom: 1px solid var(--divider);
+  }
+
+  .log-entry-remove {
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--text-md);
+    color: var(--icon-idle);
+    background: none;
+    border: none;
+    cursor: pointer;
+  }
+
+  .log-entry-remove:hover {
+    color: var(--danger);
+  }
+
+  .log-entries-empty {
+    padding: var(--space-3) var(--space-1);
+    font-size: var(--text-sm);
+    color: var(--text-faint);
+  }
+
+  @media (hover: none) {
+    .log-entry-remove,
+    .calendar-nav {
+      min-width: 36px;
+      min-height: 36px;
+    }
+  }
+
   .category {
     margin-bottom: var(--space-5);
   }

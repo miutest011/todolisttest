@@ -1,15 +1,17 @@
 // Service Worker：把网页文件缓存到手机里，装成 App 之后离线也能打开。
 //
 // 重要：改完代码要把下面的版本号 +1，否则手机上还会用旧的缓存。
-const VERSION = 'v5';
+const VERSION = 'v6';
 const CACHE_NAME = `todolist-${VERSION}`;
 
-// 需要缓存的文件。只有这几个，附件和待办数据存在浏览器自己的数据库里，不归这里管
+// 需要缓存的文件。只有这几个，附件和待办数据存在浏览器自己的数据库里，不归这里管。
+// index.html 里每多加载一个脚本，这里就要多加一行 —— 有测试盯着，漏了会报红
 const FILES = [
   './',
   './index.html',
   './style.css',
   './app.js',
+  './logs.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',

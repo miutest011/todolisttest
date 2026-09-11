@@ -105,7 +105,7 @@ let detailIndex = null;     // 正在看哪条任务的详情页（null = 看列
 let editingDueFor = null;   // 正在给哪条任务设置截止时间
 let attachmentError = null; // 附件保存失败时的提示文字
 let expandedGroups = [];    // 哪些"已完成/已放弃"分组是展开的，只记在内存里
-let currentTab = 'tasks';   // 底部标签栏当前在哪一页：tasks（清单）/ today（今天）
+let currentTab = 'tasks';   // 底部标签栏当前在哪一页：tasks（清单）/ today（今天）/ logs（打卡）
 let suppressNextClick = false;  // 拖动结束后紧跟着的那一次点击要忽略掉
 
 // 把"临时"的界面状态清空（数据状态不动）
@@ -121,6 +121,7 @@ function resetViewState() {
   expandedGroups = [];
   currentTab = 'tasks';      // 每次打开都从"清单"页开始
   suppressNextClick = false; // 万一上一次拖拽没正常收尾，别把下一次点击也吞掉
+  resetLogViewState();       // 打卡模块自己的界面状态（在 logs.js 里）
 }
 
 // 启动：把应用挂到某个页面元素上，读出数据，画出来
@@ -130,6 +131,7 @@ function initApp(element) {
   categories = loadCategories();
   todos = loadTodos();
   collapsed = loadCollapsed();
+  logItems = loadLogItems();
   render();
 }
 
@@ -239,9 +241,17 @@ function render() {
   // 靠"← 返回"退回来，导航层级更清楚
   if (detailIndex !== null) {
     appEl.appendChild(createDetailPage(detailIndex));
+  } else if (logDetailId !== null) {
+    appEl.appendChild(createLogDetailPage(logDetailId));
   } else {
-    appEl.appendChild(currentTab === 'today' ? createTodayView() : createTasksView());
+    const views = { tasks: createTasksView, today: createTodayView, logs: createLogsView };
+    appEl.appendChild((views[currentTab] || createTasksView)());
     appEl.appendChild(createTabBar());
+  }
+
+  // 刚打完卡时的"撤销"提示，浮在最上层
+  if (undoToast) {
+    appEl.appendChild(createUndoToast());
   }
 
   // 页面重画会让输入框消失，画完之后要把光标重新放回去
@@ -449,7 +459,8 @@ function commitCategoryDrag() {
 // ---- 底部标签栏 ----
 const TABS = [
   { key: 'tasks', label: '清单', icon: 'list' },
-  { key: 'today', label: '今天', icon: 'calendar' }
+  { key: 'today', label: '今天', icon: 'calendar' },
+  { key: 'logs', label: '打卡', icon: 'checkCircle' }
 ];
 
 function createTabBar() {
@@ -807,7 +818,8 @@ const ICON_PATHS = {
   cross: 'M18 6L6 18M6 6l12 12',
   arrowUp: 'M12 19V5M5 12l7-7 7 7',
   list: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
-  calendar: 'M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2zM16 2v4M8 2v4M3 10h18'
+  calendar: 'M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2zM16 2v4M8 2v4M3 10h18',
+  checkCircle: 'M22 11.08V12a10 10 0 11-5.93-9.14M22 4L12 14.01l-3-3'
 };
 
 function createIcon(name, className) {

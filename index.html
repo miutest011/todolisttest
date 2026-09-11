@@ -24,6 +24,9 @@
 <div id="app"></div>
 
 <script src="app.js"></script>
+<!-- 打卡功能单独放在 logs.js 里。它要用 app.js 里的工具，所以必须排在后面。
+     新增脚本时记得同时加进 sw.js 的缓存列表（有测试盯着） -->
+<script src="logs.js"></script>
 <script>
   // 把整个应用挂到 #app 这个元素上，开始运行
   initApp(document.getElementById('app'));
