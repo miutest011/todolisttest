@@ -357,6 +357,36 @@
     color: var(--text-faint);
   }
 
+  /* 详情页顶部横排的三个小方块：总次数 / 本月 / 上次打卡 */
+  .stat-row {
+    display: flex;
+    gap: var(--space-2);
+    margin-top: var(--space-4);
+  }
+
+  .stat-tile {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-3) var(--space-1);
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+  }
+
+  .stat-value {
+    font-size: var(--text-lg);
+    font-weight: 700;
+    color: var(--text-title);
+  }
+
+  .stat-label {
+    font-size: var(--text-xs);
+    color: var(--text-subtle);
+  }
+
   .calendar-cell {
     position: relative;
     display: flex;
@@ -365,41 +395,47 @@
     height: 40px;
     font-size: var(--text-sm);
     color: var(--text-body);
+    cursor: pointer;      /* 点某一天，下面就列出那天的记录 */
   }
 
+  .calendar-cell.blank {
+    cursor: default;
+  }
+
+  /* 日期数字下面的圆底（今天／选中时才有颜色）。
+     它要比手写圈明显小一圈，否则会把圈盖住 —— 手写圈画出来的椭圆
+     大约只占画布的八成，所以 26 和 36 这两个数字是配套的，改一个要想着另一个 */
   .calendar-day {
+    position: relative;   /* 压在手写圈上面 */
+    z-index: 1;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 30px;
-    height: 30px;
+    width: 26px;
+    height: 26px;
     border-radius: 50%;
   }
 
+  /* 今天：灰底圆 */
   .calendar-cell.today .calendar-day {
-    border: 1.5px solid var(--accent);
+    background: var(--divider);
   }
 
-  /* 打过卡的日子涂上主色 */
-  .calendar-cell.logged .calendar-day {
+  /* 选中的那天：主色圆，盖过"今天"的灰底 */
+  .calendar-cell.selected .calendar-day {
     color: var(--surface);
     background: var(--accent);
   }
 
-  /* 同一天打了几次：右上角的小数字 */
-  .calendar-count {
+  /* 打过卡的日子：像用笔圈出来的黑色圈。不显示打了几次 ——
+     具体次数看下面那天的记录列表就行，月历上只回答"这天打没打" */
+  .hand-circle {
     position: absolute;
-    top: 0;
-    right: var(--space-1);
-    box-sizing: border-box;
-    min-width: 16px;
-    height: 16px;
-    padding: 0 var(--space-1);
-    font-size: var(--text-xs);
-    line-height: 16px;
-    color: var(--surface);
-    background: var(--danger);
-    border-radius: 999px;
+    width: 36px;
+    height: 36px;
+    color: var(--text-title);
+    stroke-width: 1.6;
+    pointer-events: none;
   }
 
   .log-entries {
@@ -433,6 +469,70 @@
     padding: var(--space-3) var(--space-1);
     font-size: var(--text-sm);
     color: var(--text-faint);
+  }
+
+  /* 补录：只在"已经过去、又没打卡"的日子才出现 */
+  .backfill-btn {
+    width: 100%;
+    padding: var(--space-3);
+    margin-top: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--text-subtle);
+    background: none;
+    border: 1px dashed var(--border-soft);
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+  }
+
+  .backfill-btn:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .backfill-editor {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+    padding: var(--space-3);
+    background: var(--surface-sunken);
+    border-radius: var(--radius-lg);
+  }
+
+  .backfill-time {
+    flex: 1;
+    min-width: 0;
+    padding: var(--space-2);
+    font-family: inherit;
+    font-size: var(--text-sm);
+    color: var(--text-body);
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    outline: none;
+  }
+
+  .backfill-time:focus {
+    border-color: var(--accent);
+  }
+
+  .backfill-editor button {
+    flex-shrink: 0;
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-sm);
+    border: none;
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+
+  .backfill-confirm {
+    color: var(--surface);
+    background: var(--accent);
+  }
+
+  .backfill-cancel {
+    color: var(--text-muted);
+    background: var(--divider);
   }
 
   @media (hover: none) {

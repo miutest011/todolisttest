@@ -34,6 +34,23 @@ function openLogDetailByTap(root, name) {
   click(logRow(root, name).querySelector('.log-name'));
 }
 
+// 详情页顶部三个小方块里的数字
+function statValue(root, label) {
+  const tile = [...root.querySelectorAll('.stat-tile')]
+    .find((el) => el.querySelector('.stat-label').textContent === label);
+  return tile ? tile.querySelector('.stat-value').textContent : null;
+}
+
+// 点月历上的某一天，下面的记录列表会跟着换
+function selectDay(root, day) {
+  click(calendarCell(root, day));
+}
+
+// FIXED_NOW 换算成本地时间是几号（不同时区可能是 8 / 9 / 10 号，所以别写死）
+function fixedTodayDay() {
+  return new Date(FIXED_NOW).getDate();
+}
+
 // 测试里"现在"固定在 FIXED_NOW（2026-09-09T10:00Z）。
 // 换成本地时间，不管在哪个时区都还是 2026 年 9 月，所以"当月"写死成 2026-09
 
@@ -305,7 +322,7 @@ test('撤销：重新打开应用时，上一次的撤销提示不会残留', ()
 
 // ========== 打卡：详情页 ==========
 
-test('打卡详情：显示总次数、本月次数和上次打卡', () => {
+test('打卡详情：顶部三个小方块显示总次数、本月和上次打卡', () => {
   const { root } = setup({
     logItems: [logItem('喝水', [localIso(2026, 8, 20), localIso(2026, 9, 2), FIXED_NOW])]
   });
@@ -313,12 +330,13 @@ test('打卡详情：显示总次数、本月次数和上次打卡', () => {
 
   openLogDetailByTap(root, '喝水');
 
-  assertEqual(detailValue(root, '总次数'), '3', '总次数不对');
-  assertEqual(detailValue(root, '本月'), '2', '只该数 9 月的');
-  assert(detailValue(root, '上次打卡').includes('今天'), '上次打卡不对，实际：' + detailValue(root, '上次打卡'));
+  assertEqual(root.querySelectorAll('.stat-tile').length, 3, '应该是横排三个小方块');
+  assertEqual(statValue(root, '总次数'), '3', '总次数不对');
+  assertEqual(statValue(root, '本月'), '2', '只该数 9 月的');
+  assertEqual(statValue(root, '上次打卡'), '今天', '上次打卡要说人话');
 });
 
-test('打卡详情：月历里打过卡的日子标出次数', () => {
+test('打卡详情：打过卡的日子用手写圈圈出，不显示次数', () => {
   const { root } = setup({
     logItems: [logItem('喝水', [
       localIso(2026, 9, 5, 9), localIso(2026, 9, 5, 20), localIso(2026, 9, 6, 9)
@@ -328,24 +346,74 @@ test('打卡详情：月历里打过卡的日子标出次数', () => {
   openLogDetailByTap(root, '喝水');
 
   assertEqual(root.querySelector('.calendar-title').textContent, '2026-09', '默认显示当月');
-  assert(calendarCell(root, 5).classList.contains('logged'), '5 号打过卡，应该标出来');
-  assertEqual(calendarCell(root, 5).querySelector('.calendar-count').textContent, '2', '5 号打了两次');
-  assertEqual(calendarCell(root, 6).querySelector('.calendar-count').textContent, '1', '6 号打了一次');
-  assert(!calendarCell(root, 7).classList.contains('logged'), '7 号没打，不该标');
+  assert(calendarCell(root, 5).querySelector('.hand-circle'), '5 号打过卡，应该被圈出来');
+  assert(calendarCell(root, 6).querySelector('.hand-circle'), '6 号打过卡，应该被圈出来');
+  assertEqual(calendarCell(root, 7).querySelector('.hand-circle'), null, '7 号没打卡，不该有圈');
+  // 5 号打了两次，但圈还是一个 —— 打了几次看下面的记录列表
+  assertEqual(calendarCell(root, 5).querySelectorAll('.hand-circle').length, 1, '打几次都只圈一个圈');
+  assertEqual(root.querySelector('.calendar-count'), null, '月历上不再显示次数');
 });
 
-test('打卡详情：月历能翻到上个月，看到上个月的记录', () => {
-  const { root } = setup({ logItems: [logItem('喝水', [localIso(2026, 8, 20)])] });
+test('打卡详情：今天用灰底圆标出，并且默认就选中今天', () => {
+  const { root } = setup({ logItems: [logItem('喝水', [FIXED_NOW])] });
+  openLogsTab(root);
+
+  openLogDetailByTap(root, '喝水');
+
+  const todayCell = calendarCell(root, fixedTodayDay());
+  assert(todayCell.classList.contains('today'), '今天那一格要标出来');
+  assert(todayCell.classList.contains('selected'), '刚进详情页默认看今天的记录');
+  assertEqual(root.querySelectorAll('.log-entry').length, 1, '下面应该列着今天那一次');
+});
+
+test('打卡详情：点别的日期，下面就换成那天的记录', () => {
+  const { root } = setup({
+    logItems: [logItem('喝水', [
+      localIso(2026, 9, 3, 8, 30), localIso(2026, 9, 3, 20, 15), localIso(2026, 9, 6, 9, 0)
+    ])]
+  });
   openLogsTab(root);
   openLogDetailByTap(root, '喝水');
 
-  assert(!calendarCell(root, 20).classList.contains('logged'), '9 月 20 号没打卡');
+  selectDay(root, 3);
+
+  assertEqual(root.querySelectorAll('.log-entry').length, 2, '3 号打了两次');
+  assert(calendarCell(root, 3).classList.contains('selected'), '3 号应该变成选中状态');
+  assert(!calendarCell(root, 6).classList.contains('selected'), '同一时间只能选中一天');
+
+  selectDay(root, 6);
+
+  assertEqual(root.querySelectorAll('.log-entry').length, 1, '6 号只打了一次');
+  assert(!calendarCell(root, 3).classList.contains('selected'), '3 号应该不再是选中状态');
+});
+
+test('打卡详情：选中没打过卡的日子，会说这天还没有打卡', () => {
+  const { root } = setup({ logItems: [logItem('喝水', [localIso(2026, 9, 3, 8)])] });
+  openLogsTab(root);
+  openLogDetailByTap(root, '喝水');
+
+  selectDay(root, 7);
+
+  assertEqual(root.querySelectorAll('.log-entry').length, 0, '7 号没有记录');
+  assert(root.querySelector('.log-entries-empty'), '空着的时候要给一句提示，而不是什么都不显示');
+});
+
+test('打卡详情：月历能翻到上个月，选中那天就看到当时的记录', () => {
+  const { root } = setup({ logItems: [logItem('喝水', [localIso(2026, 8, 20, 9)])] });
+  openLogsTab(root);
+  openLogDetailByTap(root, '喝水');
+
+  assertEqual(calendarCell(root, 20).querySelector('.hand-circle'), null, '9 月 20 号没打卡');
 
   click(root.querySelector('.calendar-nav[data-offset="-1"]'));
 
   assertEqual(root.querySelector('.calendar-title').textContent, '2026-08', '应该翻到 8 月');
-  assert(calendarCell(root, 20).classList.contains('logged'), '8 月 20 号应该标出来');
-  assertEqual(root.querySelectorAll('.log-entry').length, 1, '下面的记录列表也要跟着换成 8 月的');
+  assert(calendarCell(root, 20).querySelector('.hand-circle'), '8 月 20 号应该被圈出来');
+  assert(calendarCell(root, 1).classList.contains('selected'), '翻到别的月份时默认选中这个月 1 号');
+
+  selectDay(root, 20);
+
+  assertEqual(root.querySelectorAll('.log-entry').length, 1, '应该看到 8 月 20 号那一次');
 });
 
 test('打卡详情：在详情页点数字也能记一次', () => {
@@ -357,26 +425,29 @@ test('打卡详情：在详情页点数字也能记一次', () => {
 
   assertEqual(logItems[0].entries.length, 1, '应该记了一次');
   assertEqual(logDetailId, 'log-喝水', '应该还待在详情页');
-  assertEqual(detailValue(root, '总次数'), '1', '详情页的数字要跟着更新');
+  assertEqual(statValue(root, '总次数'), '1', '小方块里的数字要跟着更新');
+  assertEqual(root.querySelectorAll('.log-entry').length, 1, '今天的记录列表里应该立刻多一条');
+  assert(calendarCell(root, fixedTodayDay()).querySelector('.hand-circle'), '今天应该被圈出来了');
 });
 
 test('打卡详情：可以删掉某一条记录，要先确认', () => {
-  const sep3 = localIso(2026, 9, 3, 8);
-  const sep4 = localIso(2026, 9, 4, 8);
-  const { root } = setup({ logItems: [logItem('喝水', [sep3, sep4])] });
+  const morning = localIso(2026, 9, 3, 8, 0);
+  const evening = localIso(2026, 9, 3, 20, 0);
+  const { root } = setup({ logItems: [logItem('喝水', [morning, evening])] });
   openLogsTab(root);
   openLogDetailByTap(root, '喝水');
+  selectDay(root, 3);
 
-  assertEqual(root.querySelectorAll('.log-entry').length, 2, '这个月有两条记录');
+  assertEqual(root.querySelectorAll('.log-entry').length, 2, '3 号有两条记录');
 
   useConfirm(() => false);
   click(root.querySelector('.log-entry-remove'));
   assertEqual(logItems[0].entries.length, 2, '点取消不该删');
 
   useConfirm(() => true);
-  click(root.querySelector('.log-entry-remove'));   // 新的在上，第一条是 9 月 4 日
+  click(root.querySelector('.log-entry-remove'));   // 新的在上，第一条是晚上那次
 
-  assertEqual(logItems[0].entries, [sep3], '应该只删掉 9 月 4 日那条');
+  assertEqual(logItems[0].entries, [morning], '应该只删掉晚上那一次');
   assertEqual(root.querySelectorAll('.log-entry').length, 1, '列表里应该只剩一条');
 });
 
@@ -435,7 +506,170 @@ test('打卡详情：重新打开应用时，详情页状态会清掉', () => {
 
   assertEqual(logDetailId, null, '上次 currentTab 泄漏就是这么来的，这回提前防住');
   assertEqual(logCalendarMonth, null, '月历翻到哪个月也要清掉');
+  assertEqual(logSelectedDay, null, '选中了哪一天同样要清掉');
   assert(root.querySelector('#category-list'), '应该回到清单页');
+});
+
+
+// ========== 打卡：补录 ==========
+// FIXED_NOW 换成本地时间一定落在 2026 年 9 月（不管什么时区），
+// 只是几号可能是 8/9/10，所以这里都相对"今天"来取
+function pastDay() {
+  return fixedTodayDay() - 3;
+}
+
+function futureDay() {
+  return fixedTodayDay() + 3;
+}
+
+function pastDayKey() {
+  return `2026-09-${String(pastDay()).padStart(2, '0')}`;
+}
+
+test('补录：过去没打卡的日子，会出现补录入口', () => {
+  const { root } = setup({ logItems: [logItem('喝水')] });
+  openLogsTab(root);
+  openLogDetailByTap(root, '喝水');
+
+  selectDay(root, pastDay());
+
+  assert(root.querySelector('.backfill-btn'), '过去空着的日子应该能补录');
+});
+
+test('补录：今天不显示补录入口（直接点大数字更快）', () => {
+  const { root } = setup({ logItems: [logItem('喝水')] });
+  openLogsTab(root);
+
+  openLogDetailByTap(root, '喝水');   // 默认就选中今天
+
+  assertEqual(root.querySelector('.backfill-btn'), null, '今天有更快的方式：点大数字');
+  assert(root.querySelector('.log-entries-empty'), '还是要说一句今天还没打卡');
+});
+
+test('补录：还没到的日子不显示补录入口', () => {
+  const { root } = setup({ logItems: [logItem('喝水')] });
+  openLogsTab(root);
+  openLogDetailByTap(root, '喝水');
+
+  selectDay(root, futureDay());
+
+  assertEqual(root.querySelector('.backfill-btn'), null, '将来的日子没法补录');
+});
+
+test('补录：那天已经有记录时不显示补录入口', () => {
+  const { root } = setup({ logItems: [logItem('喝水', [localIso(2026, 9, 3, 9)])] });
+  openLogsTab(root);
+  openLogDetailByTap(root, '喝水');
+
+  selectDay(root, 3);
+
+  assertEqual(root.querySelector('.backfill-btn'), null, '有记录就不需要补录了');
+});
+
+test('补录：填个时间就补上一次，落在选中那天（深夜也不会跑到第二天）', () => {
+  const { root, storage } = setup({ logItems: [logItem('喝水')] });
+  openLogsTab(root);
+  openLogDetailByTap(root, '喝水');
+  selectDay(root, pastDay());
+
+  click(root.querySelector('.backfill-btn'));
+  const input = root.querySelector('.backfill-time');
+  assert(input, '点补录应该出现填时间的输入框');
+  assertEqual(input.value, '12:00', '默认给个中午，省得每次都要从头选');
+
+  typeInto(input, '23:30');
+  click(root.querySelector('.backfill-confirm'));
+
+  assertEqual(logItems[0].entries.length, 1, '应该补上一条');
+  assertEqual(logDateKey(logItems[0].entries[0]), pastDayKey(), '这条要算在选中那天，而不是第二天');
+  assertEqual(stored(storage, 'logItems')[0].entries.length, 1, '要保存下来');
+});
+
+test('补录：填的是本地时间，凌晨和深夜都落在当天', () => {
+  setup({ logItems: [logItem('喝水')] });
+
+  // 只挑一个时间点是不够的：本机在 UTC-7，"把用户填的时间当成 UTC"这种 bug，
+  // 单用 23:30 根本看不出来（23:30Z 换算回本地还是当天）。
+  // 凌晨和深夜各来一次，不管在哪个时区都能把它逼出来 ——
+  // 这条测试就是变异测试逼出来的，原来那条是靠运气过的
+  backfillLog('log-喝水', '2026-09-06', '00:30');
+  backfillLog('log-喝水', '2026-09-06', '23:30');
+
+  const counts = countLogsByDay(logItems[0]);
+
+  assertEqual(counts['2026-09-06'], 2, '两次都该算在 9 月 6 日，实际：' + JSON.stringify(counts));
+});
+
+test('补录：补完之后那天被圈出来、次数加一、记录列表里也出现', () => {
+  const { root } = setup({ logItems: [logItem('喝水')] });
+  openLogsTab(root);
+  openLogDetailByTap(root, '喝水');
+  selectDay(root, pastDay());
+
+  click(root.querySelector('.backfill-btn'));
+  typeInto(root.querySelector('.backfill-time'), '09:15');
+  click(root.querySelector('.backfill-confirm'));
+
+  assertEqual(statValue(root, '总次数'), '1', '总次数要跟着变');
+  assert(calendarCell(root, pastDay()).querySelector('.hand-circle'), '那天应该被圈出来');
+  assertEqual(textsOf(root, '.log-entry-time'), ['09:15'], '记录列表里应该出现补录的那一次');
+  assertEqual(root.querySelector('.backfill-btn'), null, '这天有记录了，不该再显示补录入口');
+});
+
+test('补录：点取消不会加记录', () => {
+  const { root } = setup({ logItems: [logItem('喝水')] });
+  openLogsTab(root);
+  openLogDetailByTap(root, '喝水');
+  selectDay(root, pastDay());
+
+  click(root.querySelector('.backfill-btn'));
+  click(root.querySelector('.backfill-cancel'));
+
+  assertEqual(logItems[0].entries.length, 0, '取消就不该加');
+  assert(root.querySelector('.backfill-btn'), '应该回到"+ 补录一次"那个按钮');
+});
+
+test('补录：时间空着不会加记录', () => {
+  const { root } = setup({ logItems: [logItem('喝水')] });
+  openLogsTab(root);
+  openLogDetailByTap(root, '喝水');
+  selectDay(root, pastDay());
+
+  click(root.querySelector('.backfill-btn'));
+  typeInto(root.querySelector('.backfill-time'), '');
+  click(root.querySelector('.backfill-confirm'));
+
+  assertEqual(logItems[0].entries.length, 0, '没填时间就别加了');
+});
+
+test('补录：重新打开应用时，补录状态会清掉', () => {
+  const { root } = setup({ logItems: [logItem('喝水')] });
+  openLogsTab(root);
+  openLogDetailByTap(root, '喝水');
+  selectDay(root, pastDay());
+  click(root.querySelector('.backfill-btn'));
+  assertEqual(backfillingDay, pastDayKey(), '先确认进入了补录状态');
+
+  initApp(root);
+
+  assertEqual(backfillingDay, null, '界面状态都要在重置里清掉，这是踩过的坑');
+});
+
+test('补录：补上的记录和平常的一样，可以删掉', () => {
+  const { root } = setup({ logItems: [logItem('喝水')] });
+  openLogsTab(root);
+  openLogDetailByTap(root, '喝水');
+  selectDay(root, pastDay());
+
+  click(root.querySelector('.backfill-btn'));
+  typeInto(root.querySelector('.backfill-time'), '10:00');
+  click(root.querySelector('.backfill-confirm'));
+
+  useConfirm(() => true);
+  click(root.querySelector('.log-entry-remove'));
+
+  assertEqual(logItems[0].entries.length, 0, '补录的记录也能删');
+  assert(root.querySelector('.backfill-btn'), '删完之后又能补录了');
 });
 
 

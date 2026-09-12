@@ -24,6 +24,8 @@ let logItems = [];
 // 这些全都要在 resetLogViewState() 里重置，否则会在测试之间、或者重开 App 时泄漏
 let logDetailId = null;        // 正在看哪个打卡项目的详情（null = 没在看）
 let logCalendarMonth = null;   // 详情页月历正在看哪个月，形如 '2026-09'
+let logSelectedDay = null;     // 详情页选中了哪一天，形如 '2026-09-11'（底下列的是这天的记录）
+let backfillingDay = null;     // 正在给哪一天补录（也是 '2026-09-11' 这种日期）
 let addingLogItem = false;     // 是否正在输入新打卡项目的名字
 let editingLogItemId = null;   // 正在改名的打卡项目
 let undoToast = null;          // 刚打完卡时底部的"撤销"提示：{ itemId, entry }
@@ -37,6 +39,8 @@ function useToastDuration(ms) {    // 测试时改短，免得真等 4 秒
 function resetLogViewState() {
   logDetailId = null;
   logCalendarMonth = null;
+  logSelectedDay = null;
+  backfillingDay = null;
   addingLogItem = false;
   editingLogItemId = null;
   hideUndoToast();
@@ -207,6 +211,24 @@ function removeLogEntry(id, entry) {
   return true;
 }
 
+// 补录：给过去的某一天补上一次。
+// dateKey 形如 '2026-09-06'，timeText 形如 '19:30'
+function backfillLog(id, dateKey, timeText) {
+  const item = findLogItem(id);
+  if (!item || !timeText) return false;
+
+  // 'YYYY-MM-DDTHH:mm' 这种不带时区的写法，浏览器会按本地时间解析 —— 正是我们要的：
+  // 用户补的是"那天晚上 11 点半"，指的当然是他自己那边的 11 点半
+  const moment = new Date(`${dateKey}T${timeText}`);
+  if (isNaN(moment.getTime())) return false;
+
+  item.entries.push(moment.toISOString());
+  saveLogItems();
+  backfillingDay = null;
+  render();
+  return true;
+}
+
 // 点数字：记一次，并在底部给一个"撤销"的机会（手机上很容易点错）
 function quickLog(id) {
   const entry = recordLog(id);
@@ -244,6 +266,7 @@ function undoQuickLog() {
 function openLogDetail(id) {
   logDetailId = id;
   logCalendarMonth = logMonthKey(nowFn());   // 每次进来都先看当月
+  logSelectedDay = logDateKey(nowFn());      // 底下默认列出今天的记录
   render();
 }
 
@@ -409,17 +432,41 @@ function createLogDetailPage(id) {
   }
   page.appendChild(card);
 
-  const last = lastLogEntry(item);
-  page.appendChild(createDetailRow('总次数', String(item.entries.length)));
-  page.appendChild(createDetailRow('本月', String(countLogsInMonth(item, logMonthKey(nowFn())))));
-  page.appendChild(createDetailRow(
-    '上次打卡',
-    last ? `${formatDateTime(last)}（${describeLastLog(item)}）` : '还没打过卡'
-  ));
-
+  page.appendChild(createLogStats(item));
   page.appendChild(createLogCalendar(item));
   page.appendChild(createLogEntryList(item));
   return page;
+}
+
+// 横排的三个小方块：总次数 / 本月 / 上次打卡
+function createLogStats(item) {
+  const row = document.createElement('div');
+  row.className = 'stat-row';
+
+  const stats = [
+    { label: '总次数', value: String(item.entries.length) },
+    { label: '本月', value: String(countLogsInMonth(item, logMonthKey(nowFn()))) },
+    // 这里用"今天 / 昨天 / 5 天前"而不是完整时间，小方块塞不下那么长
+    { label: '上次打卡', value: describeLastLog(item) }
+  ];
+
+  stats.forEach((stat) => {
+    const tile = document.createElement('div');
+    tile.className = 'stat-tile';
+
+    const value = document.createElement('span');
+    value.className = 'stat-value';
+    value.textContent = stat.value;
+
+    const label = document.createElement('span');
+    label.className = 'stat-label';
+    label.textContent = stat.label;
+
+    tile.append(value, label);
+    row.appendChild(tile);
+  });
+
+  return row;
 }
 
 function createLogCalendar(item) {
@@ -459,26 +506,35 @@ function createLogCalendar(item) {
 
   logMonthCells(logCalendarMonth).forEach((day) => {
     const cell = document.createElement('div');
-    cell.className = 'calendar-cell';
 
-    if (day !== null) {
-      const key = `${logCalendarMonth}-${String(day).padStart(2, '0')}`;
-
-      const dayEl = document.createElement('span');
-      dayEl.className = 'calendar-day';
-      dayEl.textContent = String(day);
-      cell.appendChild(dayEl);
-
-      if (key === today) cell.classList.add('today');
-
-      if (counts[key]) {
-        cell.classList.add('logged');
-        const badge = document.createElement('span');
-        badge.className = 'calendar-count';
-        badge.textContent = String(counts[key]);
-        cell.appendChild(badge);
-      }
+    if (day === null) {
+      cell.className = 'calendar-cell blank';   // 月初用来占位的空格子
+      grid.appendChild(cell);
+      return;
     }
+
+    cell.className = 'calendar-cell';
+    const key = `${logCalendarMonth}-${String(day).padStart(2, '0')}`;
+    cell.dataset.date = key;
+
+    if (key === today) cell.classList.add('today');
+    if (key === logSelectedDay) cell.classList.add('selected');
+
+    // 打过卡就圈一个手写风格的圈。圈要先放，日期数字盖在上面
+    if (counts[key]) {
+      cell.classList.add('logged');
+      cell.appendChild(createIcon('handCircle', 'hand-circle'));
+    }
+
+    const dayEl = document.createElement('span');
+    dayEl.className = 'calendar-day';
+    dayEl.textContent = String(day);
+    cell.appendChild(dayEl);
+
+    cell.addEventListener('click', () => {
+      logSelectedDay = key;
+      render();
+    });
 
     grid.appendChild(cell);
   });
@@ -495,31 +551,47 @@ function createCalendarNav(symbol, label, offset) {
   btn.title = label;
   btn.addEventListener('click', () => {
     logCalendarMonth = shiftLogMonth(logCalendarMonth, offset);
+    // 选中的日子要跟着换到这个月，否则下面列的还是上个月那天的记录
+    logSelectedDay = `${logCalendarMonth}-01`;
     render();
   });
   return btn;
 }
 
-// 月历下面：这个月的每一次打卡，可以单独删掉某一条（比如事后才发现点错了）
+// '2026-09-11' → '9 月 11 日'
+function formatDayLabel(dateKey) {
+  const [, month, day] = dateKey.split('-').map(Number);
+  return `${month} 月 ${day} 日`;
+}
+
+// 月历下面：选中那天的每一次打卡，可以单独删掉某一条（比如事后才发现点错了）
 function createLogEntryList(item) {
   const box = document.createElement('div');
   box.className = 'log-entries';
 
   const entries = item.entries
-    .filter((entry) => logMonthKey(entry) === logCalendarMonth)
+    .filter((entry) => logDateKey(entry) === logSelectedDay)
     .sort()
     .reverse();    // 新的在上面
 
   const label = document.createElement('div');
   label.className = 'section-label';
-  label.textContent = `${logCalendarMonth} 的打卡记录 · ${entries.length} 次`;
+  label.textContent = `${formatDayLabel(logSelectedDay)} · ${entries.length} 次`;
   box.appendChild(label);
 
   if (entries.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'log-entries-empty';
-    empty.textContent = '这个月还没有打卡';
+    empty.textContent = '这天还没有打卡';
     box.appendChild(empty);
+
+    // 已经过去、又没打卡的日子可以补录。
+    // 今天不给这个入口 —— 直接点大数字更快；还没到的日子当然也补不了。
+    // 日期都是 'YYYY-MM-DD' 这种定长格式，直接比字符串大小就是比先后
+    if (logSelectedDay < logDateKey(nowFn())) {
+      box.appendChild(createBackfillRow(item));
+    }
+
     return box;
   }
 
@@ -529,7 +601,8 @@ function createLogEntryList(item) {
 
     const time = document.createElement('span');
     time.className = 'log-entry-time';
-    time.textContent = formatDateTime(entry);
+    // 日期已经写在上面的标题里了，这里只显示几点几分
+    time.textContent = formatDateTime(entry).slice(11);
 
     const remove = document.createElement('button');
     remove.className = 'log-entry-remove';
@@ -546,6 +619,52 @@ function createLogEntryList(item) {
     box.appendChild(row);
   });
 
+  return box;
+}
+
+// "+ 补录一次"：点一下变成填时间的小编辑区，和别处的内联编辑一个套路
+function createBackfillRow(item) {
+  if (backfillingDay !== logSelectedDay) {
+    const btn = document.createElement('button');
+    btn.className = 'backfill-btn';
+    btn.textContent = '+ 补录一次';
+    btn.addEventListener('click', () => {
+      backfillingDay = logSelectedDay;
+      render();
+    });
+    return btn;
+  }
+
+  const box = document.createElement('div');
+  box.className = 'backfill-editor';
+
+  const input = document.createElement('input');
+  input.type = 'time';
+  input.className = 'backfill-time';
+  input.value = '12:00';      // 给个默认值，多数时候不用改
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      backfillLog(item.id, logSelectedDay, input.value);
+    } else if (event.key === 'Escape') {
+      backfillingDay = null;
+      render();
+    }
+  });
+
+  const confirmBtn = document.createElement('button');
+  confirmBtn.className = 'backfill-confirm';
+  confirmBtn.textContent = '确定';
+  confirmBtn.addEventListener('click', () => backfillLog(item.id, logSelectedDay, input.value));
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'backfill-cancel';
+  cancelBtn.textContent = '取消';
+  cancelBtn.addEventListener('click', () => {
+    backfillingDay = null;
+    render();
+  });
+
+  box.append(input, confirmBtn, cancelBtn);
   return box;
 }
 
