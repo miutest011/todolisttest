@@ -451,12 +451,26 @@ test('打卡详情：可以删掉某一条记录，要先确认', () => {
   assertEqual(root.querySelectorAll('.log-entry').length, 1, '列表里应该只剩一条');
 });
 
+test('打卡详情：顶部用的是同一套悬浮圆按钮', () => {
+  const { root } = setup({ logItems: [logItem('喝水')] });
+  openLogsTab(root);
+
+  openLogDetailByTap(root, '喝水');
+
+  const header = root.querySelector('.page-header');
+  assert(header, '打卡详情页顶部也该有这一行');
+  assert(header.querySelector('.back-btn.round-btn'), '左边是圆形的返回按钮');
+  assert(header.querySelector('.back-btn svg'), '返回箭头是画出来的 SVG');
+  assert(header.querySelector('.menu-btn.round-btn'), '右边是圆形的 ⋯ 菜单按钮');
+  assertEqual(root.querySelector('.detail-card .menu-btn'), null, '菜单挪到顶部了，卡片里不该还留一个');
+});
+
 test('打卡详情：⋯ 菜单里改名', () => {
   const { root } = setup({ logItems: [logItem('喝水', [localIso(2026, 9, 1)])] });
   openLogsTab(root);
   openLogDetailByTap(root, '喝水');
 
-  click(root.querySelector('.detail-card .menu-btn'));
+  click(root.querySelector('.page-header .menu-btn'));
   click(menuItemNamed(root, '重命名'));
   const input = root.querySelector('.edit-input');
   assert(input, '应该出现改名输入框');
@@ -475,7 +489,7 @@ test('打卡详情：⋯ 菜单里删除后回到打卡列表', () => {
   openLogsTab(root);
   openLogDetailByTap(root, '喝水');
 
-  click(root.querySelector('.detail-card .menu-btn'));
+  click(root.querySelector('.page-header .menu-btn'));
   click(menuItemNamed(root, '删除打卡项目'));
 
   assertEqual(logItems.length, 0, '应该删掉了');

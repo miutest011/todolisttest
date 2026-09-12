@@ -874,20 +874,45 @@
     background: var(--divider);
   }
 
-  /* ---- 详情页 ---- */
-  .back-btn {
-    padding: var(--space-2) 0;
+  /* ---- 页面顶部：一左一右两个悬浮圆按钮 ----
+     做成通用的，以后哪个页面需要"返回 + 菜单"都能直接拿去用 */
+  .page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     margin-bottom: var(--space-4);
-    font-size: var(--text-base);
-    color: var(--text-subtle);
-    background: none;
-    border: none;
-    cursor: pointer;
   }
 
-  .back-btn:hover {
+  /* 白色圆底加一层淡阴影，看起来是浮在内容上面的 */
+  .round-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    font-size: var(--text-md);
+    line-height: 1;
+    color: var(--text-body);
+    background: var(--surface);
+    border: none;
+    border-radius: 50%;
+    box-shadow: var(--shadow-card);
+    cursor: pointer;
+    /* 列表里的 ⋯ 是"鼠标移上去才显现"，顶部这个要一直看得见 */
+    opacity: 1;
+  }
+
+  .round-btn:hover {
     color: var(--accent);
   }
+
+  .round-icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  /* ---- 详情页 ---- */
 
   .detail-card {
     display: flex;

@@ -386,18 +386,27 @@ function createLogDetailPage(id) {
   const item = findLogItem(id);
   const page = document.createElement('div');
 
-  const back = document.createElement('button');
-  back.className = 'back-btn';
-  back.textContent = '← 返回';
-  back.addEventListener('click', () => {
+  const goBack = () => {
     logDetailId = null;
     editingLogItemId = null;
     render();
-  });
-  page.appendChild(back);
+  };
 
   // 万一这个项目已经不在了，就只留一个返回按钮
-  if (!item) return page;
+  if (!item) {
+    page.appendChild(createPageHeader(goBack));
+    return page;
+  }
+
+  // 顶部一左一右两个悬浮圆按钮，菜单挪到了右上角
+  page.appendChild(createPageHeader(goBack, {
+    key: 'log-' + id,
+    items: [
+      { text: '重命名', action: () => { editingLogItemId = id; render(); } },
+      { type: 'divider' },
+      { text: '删除打卡项目', danger: true, action: () => deleteLogItem(id) }
+    ]
+  }));
 
   const card = document.createElement('div');
   card.className = 'detail-card';
@@ -424,11 +433,7 @@ function createLogDetailPage(id) {
       render();
     });
 
-    card.append(title, createLogCountButton(item), createMenu('log-' + id, [
-      { text: '重命名', action: () => { editingLogItemId = id; render(); } },
-      { type: 'divider' },
-      { text: '删除打卡项目', danger: true, action: () => deleteLogItem(id) }
-    ]));
+    card.append(title, createLogCountButton(item));
   }
   page.appendChild(card);
 

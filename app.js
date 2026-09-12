@@ -818,6 +818,7 @@ const ICON_PATHS = {
   cross: 'M18 6L6 18M6 6l12 12',
   arrowUp: 'M12 19V5M5 12l7-7 7 7',
   list: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
+  chevronLeft: 'M15 18l-6-6 6-6',
   calendar: 'M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2zM16 2v4M8 2v4M3 10h18',
   checkCircle: 'M22 11.08V12a10 10 0 11-5.93-9.14M22 4L12 14.01l-3-3',
   // 手写风格的圈：起笔和收笔故意错开一点、椭圆也不对称，看起来像笔圈出来的。
@@ -983,14 +984,36 @@ function createRenameInput(currentText, onCommit, onCancel) {
   return input;
 }
 
+// ---- 页面顶部：一左一右两个悬浮圆按钮 ----
+// 左边返回、右边 ⋯ 菜单。做成通用的，以后别的页面要"返回 + 菜单"直接调它就行。
+// menu 传 { key, items } 就有右边的菜单；不传就只有返回按钮
+function createPageHeader(onBack, menu) {
+  const header = document.createElement('div');
+  header.className = 'page-header';
+
+  const back = document.createElement('button');
+  back.className = 'round-btn back-btn';
+  back.title = '返回';
+  back.appendChild(createIcon('chevronLeft', 'round-icon'));
+  back.addEventListener('click', onBack);
+  header.appendChild(back);
+
+  if (menu) {
+    header.appendChild(createMenu(menu.key, menu.items, 'round-btn'));
+  }
+
+  return header;
+}
+
 // ---- 三点菜单 ----
-// key 用来标记"哪个菜单"，items 是菜单里的每一项
-function createMenu(key, items) {
+// key 用来标记"哪个菜单"，items 是菜单里的每一项。
+// buttonClass 可以给那个 ⋯ 按钮加样式（页面顶部用的是圆形悬浮款）
+function createMenu(key, items, buttonClass) {
   const anchor = document.createElement('div');
   anchor.className = 'menu-anchor';
 
   const btn = document.createElement('button');
-  btn.className = 'menu-btn';
+  btn.className = buttonClass ? 'menu-btn ' + buttonClass : 'menu-btn';
   btn.textContent = '⋯';
   if (openMenuKey === key) {
     btn.classList.add('open');
@@ -1055,6 +1078,11 @@ function createCategoryMenu(category) {
 }
 
 function createTodoMenu(index) {
+  return createMenu('task-' + index, todoMenuItems(index));
+}
+
+// 菜单里有哪些项。单独抽出来，是因为列表里的 ⋯ 和详情页顶部的 ⋯ 要用同一套内容
+function todoMenuItems(index) {
   const todo = todos[index];
   const items = [
     { text: '重命名', action: () => { editingTaskIndex = index; render(); } }
@@ -1083,7 +1111,7 @@ function createTodoMenu(index) {
   items.push({ type: 'divider' });
   items.push({ text: '删除任务', danger: true, action: () => deleteTodo(index) });
 
-  return createMenu('task-' + index, items);
+  return items;
 }
 
 // 点页面上任何别的地方都关掉菜单。
@@ -1104,14 +1132,15 @@ function createDetailPage(index) {
   const todo = todos[index];
   const page = document.createElement('div');
 
-  const back = document.createElement('button');
-  back.className = 'back-btn';
-  back.textContent = '← 返回';
-  back.addEventListener('click', () => {
-    detailIndex = null;
-    editingDueFor = null;
-    render();
-  });
+  // 顶部一左一右两个悬浮圆按钮，⋯ 菜单从卡片里挪到了右上角
+  const header = createPageHeader(
+    () => {
+      detailIndex = null;
+      editingDueFor = null;
+      render();
+    },
+    { key: 'task-' + index, items: todoMenuItems(index) }
+  );
 
   const card = document.createElement('div');
   card.className = todo.status === 'active' ? 'detail-card' : 'detail-card ' + todo.status;
@@ -1143,10 +1172,9 @@ function createDetailPage(index) {
     if (todo.status === 'active') {
       card.appendChild(createPinButton(index));
     }
-    card.appendChild(createTodoMenu(index));
   }
 
-  page.append(back, card);
+  page.append(header, card);
 
   const statusLabels = { active: '未完成', done: '已完成', abandoned: '已放弃' };
   page.appendChild(createDetailRow('状态', statusLabels[todo.status]));

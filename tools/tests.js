@@ -1465,16 +1465,21 @@ test('迁移：老数据的 done: true 变成 status: done', () => {
 
 // ========== 详情页的操作菜单 ==========
 
-test('详情页：有置顶按钮和三点菜单', () => {
+test('详情页：顶部是一左一右两个悬浮圆按钮', () => {
   const { root } = setup({
     categories: ['工作'],
-    todos: [{ text: '写周报', done: false, category: '工作' }]
+    todos: [{ text: '写周报', status: 'active', category: '工作' }]
   });
 
   click(root.querySelector('.todo-item'));
 
-  assert(root.querySelector('.detail-card .pin-btn'), '详情页应该有置顶按钮');
-  assert(root.querySelector('.detail-card .menu-btn'), '详情页应该有三点菜单按钮');
+  const header = root.querySelector('.page-header');
+  assert(header, '详情页顶部应该有这一行');
+  assert(header.querySelector('.back-btn.round-btn'), '左边是圆形的返回按钮');
+  assert(header.querySelector('.back-btn svg'), '返回箭头是画出来的 SVG，不是文字符号');
+  assert(header.querySelector('.menu-btn.round-btn'), '右边是圆形的 ⋯ 菜单按钮');
+  assertEqual(root.querySelector('.detail-card .menu-btn'), null, '菜单已经挪到顶部，卡片里不该还留一个');
+  assert(root.querySelector('.detail-card .pin-btn'), '置顶按钮还是留在卡片里');
 });
 
 test('详情页：菜单里能改名、移动、标记完成', () => {
@@ -1484,7 +1489,7 @@ test('详情页：菜单里能改名、移动、标记完成', () => {
   });
   click(root.querySelector('.todo-item'));
 
-  click(root.querySelector('.detail-card .menu-btn'));
+  click(root.querySelector('.page-header .menu-btn'));
   const names = textsOf(root, '.menu-item');
 
   assert(names.includes('重命名'), '菜单里应该有重命名');
@@ -1518,7 +1523,7 @@ test('详情页：菜单里删除任务后回到列表页', async () => {
   });
   click(root.querySelector('.todo-item'));
 
-  click(root.querySelector('.detail-card .menu-btn'));
+  click(root.querySelector('.page-header .menu-btn'));
   click(menuItemNamed(root, '删除任务'));
 
   assertEqual(todos.length, 0, '任务应该被删掉');
