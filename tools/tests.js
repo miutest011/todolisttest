@@ -18,6 +18,7 @@ function setup(data = {}) {
   if (data.todos) storage.setItem('todos', JSON.stringify(data.todos));
   if (data.collapsed) storage.setItem('collapsed', JSON.stringify(data.collapsed));
   if (data.logItems) storage.setItem('logItems', JSON.stringify(data.logItems));
+  if (data.logTags) storage.setItem('logTags', JSON.stringify(data.logTags));
 
   useStorage(storage);
   useConfirm(() => true);           // 默认"用户点了确定"，需要时在测试里改
@@ -2004,6 +2005,28 @@ test('自检：值不相等时 assertEqual 确实会报错', () => {
     threw = true;
   }
   assert(threw, 'assertEqual 必须在值不同时抛错，否则测试会假装全部通过');
+});
+
+test('自检：assertEqual 拒绝比较两个页面元素（它们转成 JSON 都一样）', () => {
+  const a = document.createElement('input');
+  const b = document.createElement('div');
+
+  let error = null;
+  try {
+    assertEqual(a, b, '两个不同的元素');
+  } catch (e) {
+    error = e;
+  }
+  assert(error && error.message.includes('assert(a === b'), '必须报错并告诉写测试的人该怎么改，实际：' + (error && error.message));
+
+  // 和 null 比是正常用法（"这个元素应该已经不在了"），不能误伤
+  let threwOnNull = false;
+  try {
+    assertEqual(null, null, '元素已经不在');
+  } catch (e) {
+    threwOnNull = true;
+  }
+  assert(!threwOnNull, '和 null 比较不该被拦');
 });
 
 test('自检：条件为假时 assert 确实会报错', () => {

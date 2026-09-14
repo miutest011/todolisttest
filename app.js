@@ -131,6 +131,7 @@ function initApp(element) {
   categories = loadCategories();
   todos = loadTodos();
   collapsed = loadCollapsed();
+  logTags = loadLogTags();     // 先读标签：读项目时要对照它，把已经不存在的标签去掉
   logItems = loadLogItems();
   render();
 }
@@ -254,8 +255,9 @@ function render() {
     appEl.appendChild(createUndoToast());
   }
 
-  // 页面重画会让输入框消失，画完之后要把光标重新放回去
-  const focusEl = appEl.querySelector('.add-input, .edit-input');
+  // 页面重画会让输入框消失，画完之后要把光标重新放回去。
+  // 同时有好几个输入框时，标了 data-autofocus 的优先（比如新增打卡时正在输新标签名）
+  const focusEl = appEl.querySelector('[data-autofocus]') || appEl.querySelector('.add-input, .edit-input');
   if (focusEl) {
     focusEl.focus();
     if (focusEl.classList.contains('edit-input')) {

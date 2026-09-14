@@ -516,7 +516,9 @@
     border-color: var(--accent);
   }
 
-  .backfill-editor button {
+  /* 补录和新增打卡的"确定 / 取消"是同一款小按钮 */
+  .backfill-editor button,
+  .log-draft-actions button {
     flex-shrink: 0;
     padding: var(--space-2) var(--space-3);
     font-size: var(--text-sm);
@@ -525,14 +527,151 @@
     cursor: pointer;
   }
 
-  .backfill-confirm {
+  .backfill-confirm,
+  .log-draft-create {
     color: var(--surface);
     background: var(--accent);
   }
 
-  .backfill-cancel {
+  .backfill-cancel,
+  .log-draft-cancel {
     color: var(--text-muted);
     background: var(--divider);
+  }
+
+  /* ---- 打卡的标签 ---- */
+
+  /* 顶部那一行：所有 | 用户的标签… | 已归档 | + 新增。放不下就横着滑 */
+  .log-tag-bar {
+    display: flex;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
+    overflow-x: auto;
+    scrollbar-width: none;             /* 滑动条藏起来，手机上本来也看不到 */
+  }
+
+  .log-tag-bar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* 顶部的标签和详情页里可选的标签长得一样，只是"选中"的叫法不同 */
+  .log-tag,
+  .log-tag-option {
+    flex-shrink: 0;
+    min-height: 32px;
+    padding: 0 var(--space-3);
+    font-family: inherit;
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    white-space: nowrap;
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: 999px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;       /* 长按时别弹出 iOS 自带的"拷贝"菜单 */
+  }
+
+  .log-tag.active,
+  .log-tag-option.selected {
+    color: var(--surface);
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  /* 长按了的那个标签，框变成虚线，和下面的操作条对上号 */
+  .log-tag.managing {
+    border-style: dashed;
+    border-color: var(--accent);
+  }
+
+  .log-tag-new {
+    color: var(--text-subtle);
+    border-style: dashed;
+  }
+
+  .log-tag-input {
+    flex-shrink: 0;
+    width: 96px;
+    min-height: 32px;
+    padding: 0 var(--space-3);
+    font-family: inherit;
+    font-size: var(--text-sm);
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    outline: none;
+  }
+
+  /* 长按标签后出现的"改名 / 删除 / 完成" */
+  .log-tag-manager {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin: calc(-1 * var(--space-2)) 0 var(--space-4);
+    padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+    font-size: var(--text-sm);
+    background: var(--surface-sunken);
+    border-radius: var(--radius);
+  }
+
+  .log-tag-manager-label {
+    flex: 1;
+    min-width: 0;
+    color: var(--text-muted);
+  }
+
+  .log-tag-manager button {
+    padding: var(--space-2);
+    font-family: inherit;
+    font-size: var(--text-sm);
+    color: var(--accent);
+    background: none;
+    border: none;
+    cursor: pointer;
+  }
+
+  .log-tag-manager .log-tag-delete {
+    color: var(--danger);
+  }
+
+  .log-tag-manager .edit-input {
+    flex: 1;
+    margin: var(--space-1) var(--space-2) var(--space-1) 0;
+  }
+
+  /* 可以点选的一排标签：新增打卡时、详情页里。多了就换行 */
+  .log-tag-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .log-draft {
+    padding: var(--space-3);
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+  }
+
+  .log-draft .add-input {
+    margin-bottom: var(--space-3);
+  }
+
+  .log-draft-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+  }
+
+  .log-item-tags {
+    margin: var(--space-3) 0 var(--space-4);
+  }
+
+  .log-tags-hint {
+    font-size: var(--text-sm);
+    color: var(--text-faint);
   }
 
   @media (hover: none) {

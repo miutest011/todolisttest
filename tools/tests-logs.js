@@ -689,6 +689,508 @@ test('补录：补上的记录和平常的一样，可以删掉', () => {
 
 // ========== 打卡：兼容、工程检查、性能 ==========
 
+// ========== 打卡：标签与归档 ==========
+
+// 造一个标签。id 固定成 'tag-名字'，测试里好引用
+function logTag(name) {
+  return { id: 'tag-' + name, name: name };
+}
+
+// 顶部标签行里的某一个（包括"所有""已归档""+ 新增"）
+function tagChip(root, text) {
+  return [...root.querySelectorAll('.log-tag-bar .log-tag')].find((el) => el.textContent === text);
+}
+
+// 新增编辑区 / 详情页里可以点选的标签
+function tagOption(root, text) {
+  return [...root.querySelectorAll('.log-tag-option')].find((el) => el.textContent === text);
+}
+
+function visibleLogNames(root) {
+  return textsOf(root, '.log-item .log-name');
+}
+
+function touchDown(element, x = 10, y = 10) {
+  element.dispatchEvent(new PointerEvent('pointerdown', {
+    bubbles: true, pointerType: 'touch', clientX: x, clientY: y
+  }));
+}
+
+// 三个项目：跑步带"健身"，读书带"学习"，旧习惯已归档
+function taggedSetup() {
+  return setup({
+    logTags: [logTag('健身'), logTag('学习')],
+    logItems: [
+      logItem('跑步', [], { tagIds: ['tag-健身'] }),
+      logItem('读书', [], { tagIds: ['tag-学习'] }),
+      logItem('旧习惯', [], { archived: true })
+    ]
+  });
+}
+
+test('标签：新增带 id 并保存；空名、重名、叫"所有"或"已归档"都不行', () => {
+  const { storage } = setup({ logTags: [logTag('健身')] });
+
+  const tag = addLogTag('  学习  ');
+
+  assert(tag && tag.id, '应该返回新标签，带 id');
+  assertEqual(logTags.map((t) => t.name), ['健身', '学习'], '名字去掉空格，排在已有标签后面');
+  assertEqual(stored(storage, 'logTags'), logTags, '要保存到存储里');
+
+  assertEqual(addLogTag('   '), null, '空名不行');
+  assertEqual(addLogTag('健身'), null, '重名不行');
+  assertEqual(addLogTag('所有'), null, '"所有"是固定项，重名会让顶部分不清');
+  assertEqual(addLogTag('已归档'), null, '"已归档"同理');
+  assertEqual(logTags.length, 2, '上面这些都不该建出来');
+});
+
+test('标签：改名只改名字，项目还在这个标签下', () => {
+  taggedSetup();
+
+  assertEqual(renameLogTag('tag-健身', '运动'), true, '应该改成功');
+  assertEqual(findLogTag('tag-健身').name, '运动', '名字改了');
+  assertEqual(findLogItem('log-跑步').tagIds, ['tag-健身'], '项目身上记的是 id，不用跟着改');
+  assertEqual(logItemsInFilter('tag-健身').map((i) => i.name), ['跑步'], '筛选照样有效');
+
+  assertEqual(renameLogTag('tag-健身', '学习'), false, '不能改成别的标签的名字');
+  assertEqual(renameLogTag('tag-健身', '已归档'), false, '不能改成固定项的名字');
+});
+
+test('标签：删除有项目在用的标签要确认，取消就不删', () => {
+  taggedSetup();
+  let message = null;
+  useConfirm((text) => { message = text; return false; });
+
+  assertEqual(deleteLogTag('tag-健身'), false, '取消时返回 false');
+  assert(findLogTag('tag-健身'), '标签还在');
+  assertEqual(findLogItem('log-跑步').tagIds, ['tag-健身'], '项目身上的标签也还在');
+  assert(message && message.includes('1') && message.includes('不会删掉'), '提示要说清几个项目、项目本身不会删，实际：' + message);
+});
+
+test('标签：确认删除后，项目和记录都在，只是身上少了这个标签', () => {
+  const { storage } = setup({
+    logTags: [logTag('健身'), logTag('户外')],
+    logItems: [logItem('跑步', [FIXED_NOW], { tagIds: ['tag-健身', 'tag-户外'] })]
+  });
+
+  deleteLogTag('tag-健身');
+
+  assertEqual(logTags.map((t) => t.name), ['户外'], '标签删掉了');
+  assertEqual(logItems.length, 1, '项目不能跟着删');
+  assertEqual(pick(logItems[0], ['entries', 'tagIds']), { entries: [FIXED_NOW], tagIds: ['tag-户外'] }, '记录还在，只少了被删的标签');
+  assertEqual(stored(storage, 'logItems')[0].tagIds, ['tag-户外'], '项目的变化也要保存');
+});
+
+test('标签：没有项目在用的标签，直接删不用确认', () => {
+  setup({ logTags: [logTag('健身')] });
+  let asked = false;
+  useConfirm(() => { asked = true; return true; });
+
+  deleteLogTag('tag-健身');
+
+  assertEqual(asked, false, '没什么可丢的，别打扰用户');
+  assertEqual(logTags.length, 0, '应该删掉了');
+});
+
+test('标签：新增项目可以带标签，不存在的和重复的会被去掉', () => {
+  setup({ logTags: [logTag('健身')] });
+
+  addLogItem('跑步', ['tag-健身', 'tag-健身', 'tag-不存在']);
+
+  assertEqual(pick(logItems[0], ['tagIds', 'archived']), { tagIds: ['tag-健身'], archived: false }, '只留真实存在的，且不重复');
+});
+
+test('标签：给项目加上、再去掉标签，都会保存', () => {
+  const { storage } = setup({ logTags: [logTag('健身'), logTag('户外')], logItems: [logItem('跑步')] });
+
+  toggleLogItemTag('log-跑步', 'tag-健身');
+  toggleLogItemTag('log-跑步', 'tag-户外');
+  assertEqual(findLogItem('log-跑步').tagIds, ['tag-健身', 'tag-户外'], '一个项目可以有多个标签');
+
+  toggleLogItemTag('log-跑步', 'tag-健身');
+  assertEqual(findLogItem('log-跑步').tagIds, ['tag-户外'], '再点一次就去掉');
+  assertEqual(stored(storage, 'logItems')[0].tagIds, ['tag-户外'], '要保存');
+});
+
+test('归档：去掉所有标签；取消归档后标签不会自己回来；归档的项目不能加标签', () => {
+  const { storage } = setup({
+    logTags: [logTag('健身'), logTag('户外')],
+    logItems: [logItem('跑步', [FIXED_NOW], { tagIds: ['tag-健身', 'tag-户外'] })]
+  });
+
+  archiveLogItem('log-跑步');
+  assertEqual(pick(logItems[0], ['archived', 'tagIds', 'entries']), { archived: true, tagIds: [], entries: [FIXED_NOW] }, '归档去掉标签，记录留着');
+  assertEqual(stored(storage, 'logItems')[0].archived, true, '要保存');
+
+  assertEqual(toggleLogItemTag('log-跑步', 'tag-健身'), false, '归档的不能加标签');
+  assertEqual(logItems[0].tagIds, [], '确实没加上');
+
+  unarchiveLogItem('log-跑步');
+  assertEqual(pick(logItems[0], ['archived', 'tagIds']), { archived: false, tagIds: [] }, '取消归档，标签是空的');
+});
+
+test('标签：老数据没有标签字段时补上默认值，指向不存在标签的 id 会被去掉', () => {
+  setup({
+    logTags: [logTag('健身')],
+    logItems: [
+      { id: 'log-老项目', name: '老项目', createdAt: FIXED_NOW, entries: [] },
+      logItem('跑步', [], { tagIds: ['tag-健身', 'tag-早就删了'] }),
+      logItem('怪数据', [], { archived: true, tagIds: ['tag-健身'] })
+    ]
+  });
+
+  assertEqual(pick(findLogItem('log-老项目'), ['tagIds', 'archived']), { tagIds: [], archived: false }, '老数据补默认值');
+  assertEqual(findLogItem('log-跑步').tagIds, ['tag-健身'], '不存在的标签 id 去掉，存在的留着');
+  assertEqual(findLogItem('log-怪数据').tagIds, [], '已归档的不该带标签');
+});
+
+test('标签：所有 = 没归档的；某个标签 = 带它的；已归档 = 归档了的', () => {
+  taggedSetup();
+
+  assertEqual(logItemsInFilter('all').map((i) => i.name), ['跑步', '读书'], '"所有"不含已归档');
+  assertEqual(logItemsInFilter('tag-健身').map((i) => i.name), ['跑步'], '只列带这个标签的');
+  assertEqual(logItemsInFilter('archived').map((i) => i.name), ['旧习惯'], '只列归档了的');
+});
+
+test('打卡页顶部：所有 / 自己的标签 / 已归档 / + 新增，默认选中"所有"', () => {
+  const { root } = taggedSetup();
+  openLogsTab(root);
+
+  assertEqual(textsOf(root, '.log-tag-bar .log-tag'), ['所有', '健身', '学习', '已归档', '+ 新增'], '顺序：用户标签夹在中间');
+  assertEqual(textsOf(root, '.log-tag.active'), ['所有'], '默认选中所有，且只选中一个');
+  assertEqual(visibleLogNames(root), ['跑步', '读书'], '"所有"下看不到归档的');
+});
+
+test('打卡页顶部：点标签就只看这一类，高亮跟着走', () => {
+  const { root } = taggedSetup();
+  openLogsTab(root);
+
+  click(tagChip(root, '健身'));
+  assertEqual(visibleLogNames(root), ['跑步'], '只剩带"健身"的');
+  assertEqual(textsOf(root, '.log-tag.active'), ['健身'], '高亮换到健身');
+
+  click(tagChip(root, '已归档'));
+  assertEqual(visibleLogNames(root), ['旧习惯'], '只剩归档的');
+  assertEqual(root.querySelector('.new-log-btn'), null, '已归档下不给新增入口：新建的不是归档状态，会立刻消失');
+
+  click(tagChip(root, '所有'));
+  assertEqual(visibleLogNames(root), ['跑步', '读书'], '回到所有');
+  assert(root.querySelector('.new-log-btn'), '新增入口回来了');
+});
+
+test('打卡页顶部：各种"没有东西"时的提示说得清楚', () => {
+  const { root } = setup({ logTags: [logTag('健身')], logItems: [logItem('旧习惯', [], { archived: true })] });
+  openLogsTab(root);
+
+  assert(root.querySelector('.empty-state').textContent.includes('已归档'), '"所有"是空的但有归档项目时，要告诉用户去哪找');
+
+  click(tagChip(root, '健身'));
+  assert(root.querySelector('.empty-state').textContent.includes('这个标签下'), '空标签要说明怎么加进来');
+
+  deleteLogItem('log-旧习惯');
+  click(tagChip(root, '已归档'));
+  assert(root.querySelector('.empty-state').textContent.includes('⋯'), '没有归档项目时，说明从哪里归档');
+});
+
+test('打卡页顶部：点"+ 新增"输入名字回车，新标签出现在"已归档"前面', () => {
+  const { root, storage } = taggedSetup();
+  openLogsTab(root);
+
+  click(tagChip(root, '+ 新增'));
+  const input = root.querySelector('.log-tag-bar .log-tag-input');
+  assert(input, '应该变成输入框');
+  assert(document.activeElement === input, '光标要自动放进去');
+
+  typeInto(input, '户外');
+  press(input, 'Enter');
+
+  assertEqual(textsOf(root, '.log-tag-bar .log-tag'), ['所有', '健身', '学习', '户外', '已归档', '+ 新增'], '新标签排在自定义标签最后');
+  assertEqual(root.querySelector('.log-tag-input'), null, '输入框收起');
+  assertEqual(stored(storage, 'logTags').length, 3, '保存了');
+});
+
+test('打卡页顶部：新增标签时按 Esc 不创建', () => {
+  const { root } = taggedSetup();
+  openLogsTab(root);
+
+  click(tagChip(root, '+ 新增'));
+  const input = root.querySelector('.log-tag-input');
+  typeInto(input, '户外');
+  press(input, 'Escape');
+
+  assertEqual(logTags.length, 2, '不该建出来');
+  assertEqual(root.querySelector('.log-tag-input'), null, '输入框收起');
+});
+
+test('新增打卡：可以顺手选标签，点标签不会把已经打的名字清掉', () => {
+  const { root } = taggedSetup();
+  openLogsTab(root);
+
+  click(root.querySelector('.new-log-btn'));
+  const input = root.querySelector('.log-draft .add-input');
+  typeInto(input, '游泳');
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+
+  click(tagOption(root, '健身'));    // 页面会重画，输入框是新造的
+
+  assertEqual(root.querySelector('.log-draft .add-input').value, '游泳', '名字不能丢 —— 手机上这种事特别让人抓狂');
+  assertEqual(textsOf(root, '.log-tag-option.selected'), ['健身'], '点了的标签高亮');
+
+  press(root.querySelector('.log-draft .add-input'), 'Enter');
+
+  assertEqual(findLogItemByName('游泳').tagIds, ['tag-健身'], '建出来的项目带着选的标签');
+  assertEqual(root.querySelector('.log-draft'), null, '编辑区收起');
+});
+
+test('新增打卡：点"创建"按钮也能建，点"取消"什么都不建', () => {
+  const { root } = taggedSetup();
+  openLogsTab(root);
+
+  click(root.querySelector('.new-log-btn'));
+  typeInto(root.querySelector('.log-draft .add-input'), '游泳');
+  click(root.querySelector('.log-draft-cancel'));
+  assertEqual(findLogItemByName('游泳'), null, '取消不该建');
+  assertEqual(root.querySelector('.log-draft'), null, '取消后收起');
+
+  click(root.querySelector('.new-log-btn'));
+  const input = root.querySelector('.log-draft .add-input');
+  typeInto(input, '游泳');
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  click(root.querySelector('.log-draft-create'));
+  assert(findLogItemByName('游泳'), '点创建应该建出来');
+});
+
+test('新增打卡：停在某个标签下时，默认带上这个标签，建完还在这个标签下', () => {
+  const { root } = taggedSetup();
+  openLogsTab(root);
+  click(tagChip(root, '健身'));
+
+  click(root.querySelector('.new-log-btn'));
+  assertEqual(textsOf(root, '.log-tag-option.selected'), ['健身'], '默认选上当前标签');
+
+  const input = root.querySelector('.log-draft .add-input');
+  typeInto(input, '游泳');
+  press(input, 'Enter');
+
+  assertEqual(findLogItemByName('游泳').tagIds, ['tag-健身'], '带上了');
+  assertEqual(textsOf(root, '.log-tag.active'), ['健身'], '还停在健身');
+  assert(visibleLogNames(root).includes('游泳'), '新项目就在眼前');
+});
+
+test('新增打卡：在某个标签下却取消了这个标签，建完切回"所有"，免得以为没建成', () => {
+  const { root } = taggedSetup();
+  openLogsTab(root);
+  click(tagChip(root, '健身'));
+
+  click(root.querySelector('.new-log-btn'));
+  click(tagOption(root, '健身'));      // 取消掉默认带的
+  const input = root.querySelector('.log-draft .add-input');
+  typeInto(input, '游泳');
+  press(input, 'Enter');
+
+  assertEqual(textsOf(root, '.log-tag.active'), ['所有'], '切回所有');
+  assert(visibleLogNames(root).includes('游泳'), '看得到刚建的');
+});
+
+test('新增打卡：在编辑区里新建标签，自动给这个项目选上，名字也还在', () => {
+  const { root } = taggedSetup();
+  openLogsTab(root);
+
+  click(root.querySelector('.new-log-btn'));
+  const nameInput = root.querySelector('.log-draft .add-input');
+  typeInto(nameInput, '游泳');
+  nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+  click(tagOption(root, '+ 新增标签'));
+  const tagInput = root.querySelector('.log-draft .log-tag-input');
+  assert(tagInput, '应该出现标签输入框');
+  assert(document.activeElement === tagInput, '光标要进标签输入框，而不是上面的名字输入框');
+
+  typeInto(tagInput, '水上');
+  press(tagInput, 'Enter');
+
+  assertEqual(textsOf(root, '.log-tag-option.selected'), ['水上'], '新标签自动选上');
+  assertEqual(root.querySelector('.log-draft .add-input').value, '游泳', '名字还在');
+  assert(tagChip(root, '水上'), '顶部也出现了');
+});
+
+test('打卡详情：点标签给项目加上 / 去掉', () => {
+  const { root } = taggedSetup();
+  openLogsTab(root);
+  openLogDetailByTap(root, '跑步');
+
+  assertEqual(textsOf(root, '.log-item-tags .log-tag-option.selected'), ['健身'], '已有的标签是选中状态');
+
+  click(tagOption(root, '学习'));
+  assertEqual(findLogItem('log-跑步').tagIds, ['tag-健身', 'tag-学习'], '加上了');
+
+  click(tagOption(root, '健身'));
+  assertEqual(findLogItem('log-跑步').tagIds, ['tag-学习'], '去掉了');
+  assertEqual(textsOf(root, '.log-item-tags .log-tag-option.selected'), ['学习'], '界面跟着变');
+});
+
+test('打卡详情：在详情页新建标签，直接加到这个项目上', () => {
+  const { root } = taggedSetup();
+  openLogsTab(root);
+  openLogDetailByTap(root, '跑步');
+
+  click(tagOption(root, '+ 新增标签'));
+  const input = root.querySelector('.log-item-tags .log-tag-input');
+  typeInto(input, '户外');
+  press(input, 'Enter');
+
+  const outdoor = logTags.find((t) => t.name === '户外');
+  assert(outdoor, '标签建出来了');
+  assertEqual(findLogItem('log-跑步').tagIds, ['tag-健身', outdoor.id], '直接加到了这个项目上');
+});
+
+test('打卡详情：⋯ 菜单归档后标签清空，菜单变成"取消归档"，列表里去了"已归档"', () => {
+  const { root } = taggedSetup();
+  openLogsTab(root);
+  openLogDetailByTap(root, '跑步');
+
+  click(root.querySelector('.page-header .menu-btn'));
+  click(menuItemNamed(root, '归档'));
+
+  assertEqual(findLogItem('log-跑步').tagIds, [], '标签清空');
+  assertEqual(root.querySelector('.log-tag-option'), null, '归档的项目不显示可选标签');
+  assert(root.querySelector('.log-tags-hint'), '给一句说明，不然用户以为标签坏了');
+
+  click(root.querySelector('.page-header .menu-btn'));
+  assert(menuItemNamed(root, '取消归档'), '菜单里换成取消归档');
+  assertEqual(menuItemNamed(root, '归档'), undefined, '不再有"归档"');
+  click(root.querySelector('.page-header .menu-btn'));
+
+  click(root.querySelector('.back-btn'));
+  assertEqual(visibleLogNames(root), ['读书'], '"所有"里不见了');
+  click(tagChip(root, '已归档'));
+  assertEqual(visibleLogNames(root), ['跑步', '旧习惯'], '去了已归档（按原来的顺序排）');
+});
+
+test('打卡详情：已归档的点"取消归档"，回到"所有"里', () => {
+  const { root } = taggedSetup();
+  openLogsTab(root);
+  click(tagChip(root, '已归档'));
+  openLogDetailByTap(root, '旧习惯');
+
+  click(root.querySelector('.page-header .menu-btn'));
+  click(menuItemNamed(root, '取消归档'));
+
+  assertEqual(findLogItem('log-旧习惯').archived, false, '取消归档了');
+  assert(root.querySelector('.log-item-tags .log-tag-option'), '又能选标签了');
+});
+
+test('标签管理：手机上长按标签，出现改名 / 删除，抬手补发的那次点击不会把它关掉', async () => {
+  const { root } = taggedSetup();
+  openLogsTab(root);
+
+  touchDown(tagChip(root, '健身'));
+  await sleep(20);
+
+  const manager = root.querySelector('.log-tag-manager');
+  assert(manager, '长按后应该出现操作条');
+  assert(manager.textContent.includes('健身'), '要说清在管理哪个标签');
+  assert(tagChip(root, '健身').classList.contains('managing'), '被长按的标签有标记');
+
+  click(tagChip(root, '健身'));    // 手指抬起后浏览器补发的点击
+  assert(root.querySelector('.log-tag-manager'), '不能一闪就没');
+
+  click(tagChip(root, '学习'));
+  assertEqual(root.querySelector('.log-tag-manager'), null, '点别的标签就收起');
+});
+
+test('标签管理：按住时手指滑动（在横着滑标签行）不算长按', async () => {
+  const { root } = taggedSetup();
+  openLogsTab(root);
+  useLongPressDelay(30);     // 留一点时间让"滑动"发生在长按判定之前
+
+  const chip = tagChip(root, '健身');
+  touchDown(chip, 10, 10);
+  chip.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'touch', clientX: 60, clientY: 10 }));
+  await sleep(60);
+
+  assertEqual(root.querySelector('.log-tag-manager'), null, '滑动不该弹出操作条');
+});
+
+test('标签管理：电脑上右键也能打开；"所有""已归档"不能管理', () => {
+  const { root } = taggedSetup();
+  openLogsTab(root);
+
+  tagChip(root, '所有').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  tagChip(root, '已归档').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  assertEqual(root.querySelector('.log-tag-manager'), null, '固定项不能改名删除');
+
+  tagChip(root, '学习').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  assert(root.querySelector('.log-tag-manager'), '右键打开');
+
+  click(root.querySelector('.log-tag-done'));
+  assertEqual(root.querySelector('.log-tag-manager'), null, '点完成收起');
+});
+
+test('标签管理：改名', () => {
+  const { root } = taggedSetup();
+  openLogsTab(root);
+  tagChip(root, '健身').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+
+  click(root.querySelector('.log-tag-rename'));
+  const input = root.querySelector('.log-tag-manager .edit-input');
+  assertEqual(input.value, '健身', '输入框里是原名');
+
+  typeInto(input, '运动');
+  press(input, 'Enter');
+
+  assert(tagChip(root, '运动'), '顶部显示新名字');
+  assertEqual(tagChip(root, '健身'), undefined, '旧名字没了');
+});
+
+test('标签管理：删掉正在看的标签，回到"所有"', () => {
+  const { root } = taggedSetup();
+  openLogsTab(root);
+  click(tagChip(root, '健身'));
+  tagChip(root, '健身').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+
+  click(root.querySelector('.log-tag-delete'));
+
+  assertEqual(tagChip(root, '健身'), undefined, '标签没了');
+  assertEqual(textsOf(root, '.log-tag.active'), ['所有'], '回到所有，不能停在一个不存在的标签上');
+  assertEqual(root.querySelector('.log-tag-manager'), null, '操作条收起');
+  assertEqual(visibleLogNames(root), ['跑步', '读书'], '项目都还在');
+});
+
+test('标签：重新打开应用时，选中的标签、输入、管理、新增编辑区全都清掉', () => {
+  const { root } = taggedSetup();
+  openLogsTab(root);
+  click(tagChip(root, '健身'));
+  click(tagChip(root, '+ 新增'));
+  tagChip(root, '学习').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+  click(root.querySelector('.new-log-btn'));
+
+  initApp(root);
+
+  assertEqual(
+    { logTagFilter, addingLogTagIn, managingLogTagId, renamingLogTagId, logItemDraft },
+    { logTagFilter: 'all', addingLogTagIn: null, managingLogTagId: null, renamingLogTagId: null, logItemDraft: null },
+    '界面状态都要回到初始值'
+  );
+  assertEqual(logTags.length, 2, '标签数据本身要读回来');
+});
+
+test('标签：冷启动时项目身上的标签能读回来（先读标签、再读项目）', () => {
+  const { root } = taggedSetup();
+
+  // 模拟手机上真正重新打开 App：内存里什么都没有，只有存储里的数据。
+  // 不清空的话，上一步（甚至上一条测试）留在内存里的标签会"碰巧"让读取顺序错了也能通过
+  logTags = [];
+  logItems = [];
+  initApp(root);
+
+  assertEqual(findLogItem('log-跑步').tagIds, ['tag-健身'], '先读项目再读标签的话，对照时标签列表还是空的，所有标签都会被当成不存在清掉');
+});
+
+function findLogItemByName(name) {
+  return logItems.find((item) => item.name === name) || null;
+}
+
 test('打卡：老用户没有打卡数据时一切正常，也不影响待办', () => {
   const { root, storage } = setup({
     categories: ['工作'],

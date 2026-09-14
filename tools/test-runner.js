@@ -32,6 +32,17 @@ function assert(condition, message) {
 // 用 JSON 比较，所以数组和对象也能直接比
 function assertEqual(actual, expected, message) {
   assertionCount++;
+
+  // 页面元素转成 JSON 全都是 {}，拿两个元素去比永远"相等"——这条断言等于没写。
+  // 真踩过：assertEqual(document.activeElement, input) 在光标根本不在输入框里时也通过了。
+  // 和 null 比（"这个元素应该不存在"）没问题，只拦两边都是元素的情况
+  if (isPageNode(actual) && isPageNode(expected)) {
+    throw new Error(
+      (message ? message + '\n    ' : '') +
+      '测试写法有误：assertEqual 不能比较两个页面元素（转成 JSON 都是 {}，永远相等）。请改用 assert(a === b, ...)'
+    );
+  }
+
   const actualText = JSON.stringify(actual);
   const expectedText = JSON.stringify(expected);
   if (actualText !== expectedText) {
@@ -41,6 +52,10 @@ function assertEqual(actual, expected, message) {
       '\n    期望值：' + expectedText
     );
   }
+}
+
+function isPageNode(value) {
+  return typeof Node !== 'undefined' && value instanceof Node;
 }
 
 // 假的存储，用来代替 localStorage。
