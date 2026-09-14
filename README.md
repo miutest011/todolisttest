@@ -209,4 +209,6 @@ const VERSION = 'v6';   // 改成 'v7'、'v8'……
 
 ## 测试
 
-改完代码打开 `tools/test.html` 看一眼，全绿就说明没改坏东西。详见 [tools/README.md](tools/README.md)。
+改完代码打开 `tools/test.html` 看一眼，全绿就说明没改坏东西。
+
+想确认测试本身靠不靠谱，打开 `tools/mutate.html`：它会把代码一处处故意改坏，看测试能不能发现。详见 [tools/README.md](tools/README.md)。

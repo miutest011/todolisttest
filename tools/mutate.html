@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-store">
+<title>变异测试 - 我的待办清单</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    max-width: 760px;
+    margin: 40px auto;
+    padding: 0 16px;
+    color: #333;
+  }
+
+  h1 {
+    font-size: 20px;
+  }
+
+  h2 {
+    margin: 24px 0 8px;
+    font-size: 14px;
+    color: #666;
+  }
+
+  .hint {
+    margin-bottom: 20px;
+    font-size: 13px;
+    line-height: 1.7;
+    color: #999;
+  }
+
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  select,
+  button {
+    padding: 8px 14px;
+    font-size: 14px;
+    border-radius: 8px;
+  }
+
+  select {
+    border: 1px solid #ddd;
+    background: white;
+  }
+
+  button {
+    color: white;
+    background: #4a90e2;
+    border: none;
+    cursor: pointer;
+  }
+
+  button:disabled {
+    background: #b8cde6;
+    cursor: default;
+  }
+
+  button.secondary {
+    color: #666;
+    background: #eee;
+  }
+
+  .summary {
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    font-size: 15px;
+    font-weight: 600;
+    border-radius: 10px;
+    background: #f6f6f6;
+  }
+
+  .summary.pass {
+    color: #2e7d32;
+    background: #edf7ee;
+  }
+
+  .summary.fail {
+    color: #c62828;
+    background: #fdecea;
+  }
+
+  .progress {
+    margin-bottom: 12px;
+    font-size: 13px;
+    color: #888;
+  }
+
+  .banner {
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    font-size: 13px;
+    line-height: 1.7;
+    border-radius: 8px;
+  }
+
+  .banner.fail {
+    color: #c62828;
+    background: #fdecea;
+  }
+
+  .banner.warn {
+    color: #8a6100;
+    background: #fff8e6;
+  }
+
+  .row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 12px;
+    margin-bottom: 4px;
+    font-size: 13px;
+    border-radius: 8px;
+    background: #fafafa;
+  }
+
+  .row-main {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .row-file {
+    margin-left: 6px;
+    font-size: 12px;
+    color: #aaa;
+  }
+
+  .badge {
+    flex-shrink: 0;
+    min-width: 76px;
+    font-weight: 600;
+  }
+
+  .row button {
+    flex-shrink: 0;
+    padding: 2px 10px;
+    font-size: 12px;
+  }
+
+  /* 抓到了：这是我们想要的，绿色 */
+  .row.killed { background: #fafcfa; }
+  .row.killed .badge { color: #2e7d32; }
+
+  /* 没抓到：最要紧，红色 */
+  .row.survived { background: #fdecea; }
+  .row.survived .badge { color: #c62828; }
+
+  /* 过期 / 没加载：清单要更新，黄色 */
+  .row.stale .badge,
+  .row.unloaded .badge { color: #8a6100; }
+  .row.stale,
+  .row.unloaded { background: #fff8e6; }
+
+  /* 跑不起来 / 超时：变异写得不好，灰色 */
+  .row.broken .badge,
+  .row.timeout .badge { color: #888; }
+
+  .row.running .badge { color: #4a90e2; }
+
+  .detail {
+    margin-top: 6px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #888;
+    white-space: pre-wrap;
+  }
+</style>
+</head>
+<body>
+
+<h1>变异测试</h1>
+<p class="hint">
+  测试全绿不能说明测试有用——抓不到 bug 的测试也是绿的。这个页面会把 <code>mutations.js</code> 里列的地方
+  一处一处故意改坏，每改一处就把全部测试跑一遍，看测试能不能发现。<br>
+  只在内存里改，<b>项目里的文件从头到尾不会动</b>。每处要跑几秒，全部跑完要几分钟。
+</p>
+
+<div class="controls">
+  <select id="group"></select>
+  <button id="start">开始</button>
+  <button id="stop" class="secondary" disabled>停止</button>
+</div>
+
+<div id="summary" class="summary">还没开始</div>
+<div id="progress" class="progress"></div>
+<div id="banners"></div>
+<div id="list"></div>
+
+<script>
+  const STATUS_TEXT = {
+    waiting: '等待',
+    running: '正在跑…',
+    killed: '抓到了',
+    survived: '没抓到',
+    stale: '已过期',
+    unloaded: '没加载',
+    broken: '跑不起来',
+    timeout: '超时'
+  };
+
+  // 开始之前的自检：保证这个页面本身没有坏。
+  // 必死变异：让应用一启动就报错，几乎所有测试都该失败。
+  // 要是它都"没抓到"，说明改过的代码根本没被用上，后面所有结论都不可信
+  const SELF_CHECK_MUTATION = {
+    file: 'app.js',
+    find: 'function initApp(element) {',
+    replace: "function initApp(element) {\n  throw new Error('变异工具自检：这份代码是故意弄坏的');"
+  };
+
+  const toolsUrl = new URL('.', location.href).href;     // http://…/tools/
+  const rootUrl = new URL('../', location.href).href;    // http://…/
+
+  const els = {
+    group: document.getElementById('group'),
+    start: document.getElementById('start'),
+    stop: document.getElementById('stop'),
+    summary: document.getElementById('summary'),
+    progress: document.getElementById('progress'),
+    banners: document.getElementById('banners'),
+    list: document.getElementById('list')
+  };
+
+  let results = {};          // 变异名字 → 结果
+  let selfCheckPassed = false;
+  let stopRequested = false;
+  let busy = false;
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const element = document.createElement('script');
+      element.src = src + '?t=' + Date.now();
+      element.onload = resolve;
+      element.onerror = () => reject(new Error('加载失败：' + src));
+      document.head.appendChild(element);
+    });
+  }
+
+  function fetchText(url) {
+    return fetch(url + '?t=' + Date.now()).then((response) => {
+      if (!response.ok) throw new Error(`读不到 ${url}（${response.status}）`);
+      return response.text();
+    });
+  }
+
+  function addBanner(kind, text) {
+    const banner = document.createElement('div');
+    banner.className = 'banner ' + kind;
+    banner.textContent = text;
+    els.banners.appendChild(banner);
+  }
+
+  // ---- 画列表 ----
+  function renderList() {
+    els.list.innerHTML = '';
+    const groups = [...new Set(MUTATIONS.map((m) => m.group))];
+
+    groups.forEach((group) => {
+      const title = document.createElement('h2');
+      title.textContent = group;
+      els.list.appendChild(title);
+
+      MUTATIONS.filter((m) => m.group === group).forEach((m) => {
+        const result = results[m.name];
+        const status = result ? result.status : 'waiting';
+
+        const row = document.createElement('div');
+        row.className = 'row ' + status;
+
+        const badge = document.createElement('span');
+        badge.className = 'badge';
+        badge.textContent = STATUS_TEXT[status];
+
+        const main = document.createElement('div');
+        main.className = 'row-main';
+        main.textContent = m.name;
+
+        const file = document.createElement('span');
+        file.className = 'row-file';
+        file.textContent = m.file;
+        main.appendChild(file);
+
+        const detailText = describeResult(result);
+        if (detailText) {
+          const detail = document.createElement('div');
+          detail.className = 'detail';
+          detail.textContent = detailText;
+          main.appendChild(detail);
+        }
+
+        const runOne = document.createElement('button');
+        runOne.className = 'secondary';
+        runOne.textContent = '跑这条';
+        runOne.disabled = busy;
+        runOne.addEventListener('click', () => runBatch([m]));
+
+        row.append(badge, main, runOne);
+        els.list.appendChild(row);
+      });
+    });
+  }
+
+  function describeResult(result) {
+    if (!result) return '';
+    switch (result.status) {
+      case 'killed':
+        return `${result.failed.length} 条测试失败：` + result.failed.slice(0, 5).join('、') +
+          (result.failed.length > 5 ? ` 等` : '') + (result.unstable ? '（另外两遍结果不一致）' : '');
+      case 'survived':
+        return '测试全绿。先确认这个改动是不是真的造成了用户看得出的差别——没有的话是变异无效，' +
+          '甚至可能说明原来那段代码是多余的；有的话就是测试漏了，去补一条。';
+      case 'stale':
+        return result.count === 0
+          ? '在文件里找不到这段原文：代码后来改过了。照着现在的代码更新 find，或者删掉这一条。'
+          : `这段原文在文件里出现了 ${result.count} 处，不知道该改哪一处。把 find 写长一点，带上前后几个字。`;
+      case 'unloaded':
+        return '测试页（test.html 的 SCRIPTS）没有加载这个文件，改了也白改。';
+      case 'broken':
+        return '改完之后代码跑不起来（' + (result.syntaxErrors[0] || result.summary) + '）。' +
+          '这种"失败"不算测试的功劳，把 replace 改成语法正确的写法。';
+      case 'timeout':
+        return '测试页一分钟都没跑完。可能改出了死循环。';
+      default:
+        return '';
+    }
+  }
+
+  function renderSummary(done, total) {
+    const all = Object.values(results);
+    const count = (status) => all.filter((r) => r.status === status).length;
+    const survived = count('survived');
+    const needsFix = count('stale') + count('unloaded') + count('broken') + count('timeout');
+
+    const parts = [`抓到 ${count('killed')}`, `没抓到 ${survived}`];
+    if (needsFix > 0) parts.push(`清单要更新 ${needsFix}`);
+    // 前面的数字是页面上所有结果（包括之前单独跑的），括号里是这一轮的进度
+    els.summary.textContent = parts.join(' · ') + `（这一轮 ${done} / ${total}）`;
+
+    if (done < total) {
+      els.summary.className = 'summary';
+    } else {
+      els.summary.className = survived > 0 || needsFix > 0 ? 'summary fail' : 'summary pass';
+    }
+  }
+
+  // ---- 跑 ----
+  async function runBatch(mutations) {
+    if (busy) return;
+    busy = true;
+    stopRequested = false;
+    els.start.disabled = true;
+    els.stop.disabled = false;
+    els.banners.innerHTML = '';
+
+    try {
+      // 每次都重新读文件，改完代码直接再点"开始"就行，不用刷新页面
+      const testHtml = await fetchText(toolsUrl + 'test.html');
+      if (!parseTestScripts(testHtml)) {
+        addBanner('fail', 'test.html 里找不到 `const SCRIPTS = [...]` 这一行，写法变了。这个工具要跟着改（mutate-runner.js 的 parseTestScripts）。');
+        return;
+      }
+
+      const sources = {};
+      const sourceOf = async (file) => {
+        if (!(file in sources)) sources[file] = await fetchText(rootUrl + file);
+        return sources[file];
+      };
+      const run = async (m) => runMutant({
+        testHtml: testHtml,
+        baseHref: toolsUrl,
+        source: m ? await sourceOf(m.file) : null,
+        file: m ? m.file : null,
+        find: m ? m.find : null,
+        replace: m ? m.replace : null
+      });
+
+      if (!selfCheckPassed) {
+        els.progress.textContent = '自检 1/2：什么都不改，测试应该全绿……';
+        const baseline = await run(null);
+        if (baseline.status !== 'survived' || !baseline.summary.startsWith('全部通过')) {
+          addBanner('fail', `自检没通过：代码没改的时候测试就不是全绿（${baseline.summary || STATUS_TEXT[baseline.status]}）。` +
+            '先打开 test.html 把测试修好，不然这里的结果没有意义。');
+          return;
+        }
+
+        els.progress.textContent = '自检 2/2：故意把应用弄坏，测试应该大片失败……';
+        const doomed = await run(SELF_CHECK_MUTATION);
+        if (doomed.status !== 'killed') {
+          addBanner('fail', `自检没通过：应用一启动就报错，测试却是"${STATUS_TEXT[doomed.status]}"。` +
+            (doomed.status === 'stale'
+              ? '自检用的那行 function initApp(element) { 在 app.js 里找不到了，更新 mutate.html 里的 SELF_CHECK_MUTATION。'
+              : '说明改过的代码没被用上，这个工具坏了，结果不可信。'));
+          return;
+        }
+        selfCheckPassed = true;
+      }
+
+      mutations.forEach((m) => { delete results[m.name]; });
+      for (let i = 0; i < mutations.length; i++) {
+        if (stopRequested) break;
+        const m = mutations[i];
+        els.progress.textContent = `正在跑 ${i + 1} / ${mutations.length}：${m.name}`;
+        results[m.name] = { status: 'running' };
+        renderList();
+        results[m.name] = await run(m);
+        renderList();
+        renderSummary(i + 1, mutations.length);
+      }
+
+      els.progress.textContent = stopRequested ? '已停止' : '跑完了';
+      const survived = mutations.filter((m) => results[m.name] && results[m.name].status === 'survived');
+      if (survived.length > 0) {
+        addBanner('fail', '⚠️ 这些改动测试没发现：' + survived.map((m) => m.name).join('、'));
+      }
+    } catch (error) {
+      addBanner('fail', error.message);
+    } finally {
+      busy = false;
+      els.start.disabled = false;
+      els.stop.disabled = true;
+      renderList();
+    }
+  }
+
+  // ---- 启动 ----
+  if (location.protocol === 'file:') {
+    els.summary.className = 'summary fail';
+    els.summary.textContent = '要先启动 python3 tools/dev-server.py，再打开 http://localhost:4173/tools/mutate.html（双击打开读不了项目文件）';
+    els.start.disabled = true;
+  } else {
+    Promise.all([loadScript('mutate-runner.js'), loadScript('mutations.js')]).then(() => {
+      const groups = [...new Set(MUTATIONS.map((m) => m.group))];
+      els.group.innerHTML = `<option value="">全部（${MUTATIONS.length} 条）</option>` +
+        groups.map((g) => `<option value="${g}">${g}（${MUTATIONS.filter((m) => m.group === g).length} 条）</option>`).join('');
+      renderList();
+
+      els.start.addEventListener('click', () => {
+        const group = els.group.value;
+        runBatch(group ? MUTATIONS.filter((m) => m.group === group) : MUTATIONS);
+      });
+      els.stop.addEventListener('click', () => {
+        stopRequested = true;
+        els.stop.disabled = true;
+        els.progress.textContent = '跑完当前这条就停……';
+      });
+    }).catch((error) => {
+      els.summary.className = 'summary fail';
+      els.summary.textContent = error.message;
+    });
+  }
+</script>
+
+</body>
+</html>
