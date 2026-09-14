@@ -19,6 +19,8 @@ function setup(data = {}) {
   if (data.collapsed) storage.setItem('collapsed', JSON.stringify(data.collapsed));
   if (data.logItems) storage.setItem('logItems', JSON.stringify(data.logItems));
   if (data.logTags) storage.setItem('logTags', JSON.stringify(data.logTags));
+  if (data.listTags) storage.setItem('listTags', JSON.stringify(data.listTags));
+  if (data.categoryMeta) storage.setItem('categoryMeta', JSON.stringify(data.categoryMeta));
 
   useStorage(storage);
   useConfirm(() => true);           // 默认"用户点了确定"，需要时在测试里改

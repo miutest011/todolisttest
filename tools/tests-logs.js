@@ -698,12 +698,12 @@ function logTag(name) {
 
 // 顶部标签行里的某一个（包括"所有""已归档""+ 新增"）
 function tagChip(root, text) {
-  return [...root.querySelectorAll('.log-tag-bar .log-tag')].find((el) => el.textContent === text);
+  return [...root.querySelectorAll('.tag-bar .tag-chip')].find((el) => el.textContent === text);
 }
 
 // 新增编辑区 / 详情页里可以点选的标签
 function tagOption(root, text) {
-  return [...root.querySelectorAll('.log-tag-option')].find((el) => el.textContent === text);
+  return [...root.querySelectorAll('.tag-option')].find((el) => el.textContent === text);
 }
 
 function visibleLogNames(root) {
@@ -856,8 +856,8 @@ test('打卡页顶部：所有 / 自己的标签 / 已归档 / + 新增，默认
   const { root } = taggedSetup();
   openLogsTab(root);
 
-  assertEqual(textsOf(root, '.log-tag-bar .log-tag'), ['所有', '健身', '学习', '已归档', '+ 新增'], '顺序：用户标签夹在中间');
-  assertEqual(textsOf(root, '.log-tag.active'), ['所有'], '默认选中所有，且只选中一个');
+  assertEqual(textsOf(root, '.tag-bar .tag-chip'), ['所有', '健身', '学习', '已归档', '+ 新增'], '顺序：用户标签夹在中间');
+  assertEqual(textsOf(root, '.tag-chip.active'), ['所有'], '默认选中所有，且只选中一个');
   assertEqual(visibleLogNames(root), ['跑步', '读书'], '"所有"下看不到归档的');
 });
 
@@ -867,7 +867,7 @@ test('打卡页顶部：点标签就只看这一类，高亮跟着走', () => {
 
   click(tagChip(root, '健身'));
   assertEqual(visibleLogNames(root), ['跑步'], '只剩带"健身"的');
-  assertEqual(textsOf(root, '.log-tag.active'), ['健身'], '高亮换到健身');
+  assertEqual(textsOf(root, '.tag-chip.active'), ['健身'], '高亮换到健身');
 
   click(tagChip(root, '已归档'));
   assertEqual(visibleLogNames(root), ['旧习惯'], '只剩归档的');
@@ -897,15 +897,15 @@ test('打卡页顶部：点"+ 新增"输入名字回车，新标签出现在"已
   openLogsTab(root);
 
   click(tagChip(root, '+ 新增'));
-  const input = root.querySelector('.log-tag-bar .log-tag-input');
+  const input = root.querySelector('.tag-bar .tag-input');
   assert(input, '应该变成输入框');
   assert(document.activeElement === input, '光标要自动放进去');
 
   typeInto(input, '户外');
   press(input, 'Enter');
 
-  assertEqual(textsOf(root, '.log-tag-bar .log-tag'), ['所有', '健身', '学习', '户外', '已归档', '+ 新增'], '新标签排在自定义标签最后');
-  assertEqual(root.querySelector('.log-tag-input'), null, '输入框收起');
+  assertEqual(textsOf(root, '.tag-bar .tag-chip'), ['所有', '健身', '学习', '户外', '已归档', '+ 新增'], '新标签排在自定义标签最后');
+  assertEqual(root.querySelector('.tag-input'), null, '输入框收起');
   assertEqual(stored(storage, 'logTags').length, 3, '保存了');
 });
 
@@ -914,12 +914,12 @@ test('打卡页顶部：新增标签时按 Esc 不创建', () => {
   openLogsTab(root);
 
   click(tagChip(root, '+ 新增'));
-  const input = root.querySelector('.log-tag-input');
+  const input = root.querySelector('.tag-input');
   typeInto(input, '户外');
   press(input, 'Escape');
 
   assertEqual(logTags.length, 2, '不该建出来');
-  assertEqual(root.querySelector('.log-tag-input'), null, '输入框收起');
+  assertEqual(root.querySelector('.tag-input'), null, '输入框收起');
 });
 
 test('新增打卡：可以顺手选标签，点标签不会把已经打的名字清掉', () => {
@@ -934,7 +934,7 @@ test('新增打卡：可以顺手选标签，点标签不会把已经打的名�
   click(tagOption(root, '健身'));    // 页面会重画，输入框是新造的
 
   assertEqual(root.querySelector('.log-draft .add-input').value, '游泳', '名字不能丢 —— 手机上这种事特别让人抓狂');
-  assertEqual(textsOf(root, '.log-tag-option.selected'), ['健身'], '点了的标签高亮');
+  assertEqual(textsOf(root, '.tag-option.selected'), ['健身'], '点了的标签高亮');
 
   press(root.querySelector('.log-draft .add-input'), 'Enter');
 
@@ -966,14 +966,14 @@ test('新增打卡：停在某个标签下时，默认带上这个标签，建�
   click(tagChip(root, '健身'));
 
   click(root.querySelector('.new-log-btn'));
-  assertEqual(textsOf(root, '.log-tag-option.selected'), ['健身'], '默认选上当前标签');
+  assertEqual(textsOf(root, '.tag-option.selected'), ['健身'], '默认选上当前标签');
 
   const input = root.querySelector('.log-draft .add-input');
   typeInto(input, '游泳');
   press(input, 'Enter');
 
   assertEqual(findLogItemByName('游泳').tagIds, ['tag-健身'], '带上了');
-  assertEqual(textsOf(root, '.log-tag.active'), ['健身'], '还停在健身');
+  assertEqual(textsOf(root, '.tag-chip.active'), ['健身'], '还停在健身');
   assert(visibleLogNames(root).includes('游泳'), '新项目就在眼前');
 });
 
@@ -988,7 +988,7 @@ test('新增打卡：在某个标签下却取消了这个标签，建完切回"�
   typeInto(input, '游泳');
   press(input, 'Enter');
 
-  assertEqual(textsOf(root, '.log-tag.active'), ['所有'], '切回所有');
+  assertEqual(textsOf(root, '.tag-chip.active'), ['所有'], '切回所有');
   assert(visibleLogNames(root).includes('游泳'), '看得到刚建的');
 });
 
@@ -1002,14 +1002,14 @@ test('新增打卡：在编辑区里新建标签，自动给这个项目选上�
   nameInput.dispatchEvent(new Event('input', { bubbles: true }));
 
   click(tagOption(root, '+ 新增标签'));
-  const tagInput = root.querySelector('.log-draft .log-tag-input');
+  const tagInput = root.querySelector('.log-draft .tag-input');
   assert(tagInput, '应该出现标签输入框');
   assert(document.activeElement === tagInput, '光标要进标签输入框，而不是上面的名字输入框');
 
   typeInto(tagInput, '水上');
   press(tagInput, 'Enter');
 
-  assertEqual(textsOf(root, '.log-tag-option.selected'), ['水上'], '新标签自动选上');
+  assertEqual(textsOf(root, '.tag-option.selected'), ['水上'], '新标签自动选上');
   assertEqual(root.querySelector('.log-draft .add-input').value, '游泳', '名字还在');
   assert(tagChip(root, '水上'), '顶部也出现了');
 });
@@ -1019,14 +1019,14 @@ test('打卡详情：点标签给项目加上 / 去掉', () => {
   openLogsTab(root);
   openLogDetailByTap(root, '跑步');
 
-  assertEqual(textsOf(root, '.log-item-tags .log-tag-option.selected'), ['健身'], '已有的标签是选中状态');
+  assertEqual(textsOf(root, '.log-item-tags .tag-option.selected'), ['健身'], '已有的标签是选中状态');
 
   click(tagOption(root, '学习'));
   assertEqual(findLogItem('log-跑步').tagIds, ['tag-健身', 'tag-学习'], '加上了');
 
   click(tagOption(root, '健身'));
   assertEqual(findLogItem('log-跑步').tagIds, ['tag-学习'], '去掉了');
-  assertEqual(textsOf(root, '.log-item-tags .log-tag-option.selected'), ['学习'], '界面跟着变');
+  assertEqual(textsOf(root, '.log-item-tags .tag-option.selected'), ['学习'], '界面跟着变');
 });
 
 test('打卡详情：在详情页新建标签，直接加到这个项目上', () => {
@@ -1035,7 +1035,7 @@ test('打卡详情：在详情页新建标签，直接加到这个项目上', ()
   openLogDetailByTap(root, '跑步');
 
   click(tagOption(root, '+ 新增标签'));
-  const input = root.querySelector('.log-item-tags .log-tag-input');
+  const input = root.querySelector('.log-item-tags .tag-input');
   typeInto(input, '户外');
   press(input, 'Enter');
 
@@ -1053,7 +1053,7 @@ test('打卡详情：⋯ 菜单归档后标签清空，菜单变成"取消归档
   click(menuItemNamed(root, '归档'));
 
   assertEqual(findLogItem('log-跑步').tagIds, [], '标签清空');
-  assertEqual(root.querySelector('.log-tag-option'), null, '归档的项目不显示可选标签');
+  assertEqual(root.querySelector('.tag-option'), null, '归档的项目不显示可选标签');
   assert(root.querySelector('.log-tags-hint'), '给一句说明，不然用户以为标签坏了');
 
   click(root.querySelector('.page-header .menu-btn'));
@@ -1077,7 +1077,7 @@ test('打卡详情：已归档的点"取消归档"，回到"所有"里', () => {
   click(menuItemNamed(root, '取消归档'));
 
   assertEqual(findLogItem('log-旧习惯').archived, false, '取消归档了');
-  assert(root.querySelector('.log-item-tags .log-tag-option'), '又能选标签了');
+  assert(root.querySelector('.log-item-tags .tag-option'), '又能选标签了');
 });
 
 test('标签管理：手机上长按标签，出现改名 / 删除，抬手补发的那次点击不会把它关掉', async () => {
@@ -1087,16 +1087,16 @@ test('标签管理：手机上长按标签，出现改名 / 删除，抬手补�
   touchDown(tagChip(root, '健身'));
   await sleep(20);
 
-  const manager = root.querySelector('.log-tag-manager');
+  const manager = root.querySelector('.tag-manager');
   assert(manager, '长按后应该出现操作条');
   assert(manager.textContent.includes('健身'), '要说清在管理哪个标签');
   assert(tagChip(root, '健身').classList.contains('managing'), '被长按的标签有标记');
 
   click(tagChip(root, '健身'));    // 手指抬起后浏览器补发的点击
-  assert(root.querySelector('.log-tag-manager'), '不能一闪就没');
+  assert(root.querySelector('.tag-manager'), '不能一闪就没');
 
   click(tagChip(root, '学习'));
-  assertEqual(root.querySelector('.log-tag-manager'), null, '点别的标签就收起');
+  assertEqual(root.querySelector('.tag-manager'), null, '点别的标签就收起');
 });
 
 test('标签管理：按住时手指滑动（在横着滑标签行）不算长按', async () => {
@@ -1109,7 +1109,7 @@ test('标签管理：按住时手指滑动（在横着滑标签行）不算长�
   chip.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'touch', clientX: 60, clientY: 10 }));
   await sleep(60);
 
-  assertEqual(root.querySelector('.log-tag-manager'), null, '滑动不该弹出操作条');
+  assertEqual(root.querySelector('.tag-manager'), null, '滑动不该弹出操作条');
 });
 
 test('标签管理：电脑上右键也能打开；"所有""已归档"不能管理', () => {
@@ -1118,13 +1118,13 @@ test('标签管理：电脑上右键也能打开；"所有""已归档"不能管�
 
   tagChip(root, '所有').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
   tagChip(root, '已归档').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
-  assertEqual(root.querySelector('.log-tag-manager'), null, '固定项不能改名删除');
+  assertEqual(root.querySelector('.tag-manager'), null, '固定项不能改名删除');
 
   tagChip(root, '学习').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
-  assert(root.querySelector('.log-tag-manager'), '右键打开');
+  assert(root.querySelector('.tag-manager'), '右键打开');
 
-  click(root.querySelector('.log-tag-done'));
-  assertEqual(root.querySelector('.log-tag-manager'), null, '点完成收起');
+  click(root.querySelector('.tag-done'));
+  assertEqual(root.querySelector('.tag-manager'), null, '点完成收起');
 });
 
 test('标签管理：改名', () => {
@@ -1132,8 +1132,8 @@ test('标签管理：改名', () => {
   openLogsTab(root);
   tagChip(root, '健身').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
 
-  click(root.querySelector('.log-tag-rename'));
-  const input = root.querySelector('.log-tag-manager .edit-input');
+  click(root.querySelector('.tag-rename'));
+  const input = root.querySelector('.tag-manager .edit-input');
   assertEqual(input.value, '健身', '输入框里是原名');
 
   typeInto(input, '运动');
@@ -1149,11 +1149,11 @@ test('标签管理：删掉正在看的标签，回到"所有"', () => {
   click(tagChip(root, '健身'));
   tagChip(root, '健身').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
 
-  click(root.querySelector('.log-tag-delete'));
+  click(root.querySelector('.tag-delete'));
 
   assertEqual(tagChip(root, '健身'), undefined, '标签没了');
-  assertEqual(textsOf(root, '.log-tag.active'), ['所有'], '回到所有，不能停在一个不存在的标签上');
-  assertEqual(root.querySelector('.log-tag-manager'), null, '操作条收起');
+  assertEqual(textsOf(root, '.tag-chip.active'), ['所有'], '回到所有，不能停在一个不存在的标签上');
+  assertEqual(root.querySelector('.tag-manager'), null, '操作条收起');
   assertEqual(visibleLogNames(root), ['跑步', '读书'], '项目都还在');
 });
 
@@ -1168,8 +1168,8 @@ test('标签：重新打开应用时，选中的标签、输入、管理、新�
   initApp(root);
 
   assertEqual(
-    { logTagFilter, addingLogTagIn, managingLogTagId, renamingLogTagId, logItemDraft },
-    { logTagFilter: 'all', addingLogTagIn: null, managingLogTagId: null, renamingLogTagId: null, logItemDraft: null },
+    { logTagFilter, addingTagIn, managingTagId, renamingTagId, logItemDraft },
+    { logTagFilter: 'all', addingTagIn: null, managingTagId: null, renamingTagId: null, logItemDraft: null },
     '界面状态都要回到初始值'
   );
   assertEqual(logTags.length, 2, '标签数据本身要读回来');

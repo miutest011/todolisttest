@@ -96,6 +96,12 @@ const DEFAULT_CATEGORIES = ['工作', '生活'];
 let categories = [];        // 清单名字的数组
 let todos = [];             // 每一项是 { text, done, category }
 let collapsed = [];         // 当前被折叠起来的清单名字
+let listTags = [];          // 清单页自己的标签 [{ id, name }]，和打卡的标签互不相干
+// 每个清单放在哪个标签下、有没有归档：{ '工作': { tagId: 'ltag-…', archived: false } }
+// 标签像文件夹，一个清单最多放在一个标签下。归档了的清单不在任何标签下。
+// 只记"有标签或已归档"的清单，没记的就是默认值（不在标签下、没归档）。
+// 注意这里是按清单名字记的（和任务、折叠状态一样），所以清单改名时要跟着改
+let categoryMeta = {};
 let addingTaskIn = null;    // 正在哪个清单里输入新任务
 let addingCategory = false; // 是否正在输入新清单的名字
 let editingTaskIndex = null;// 正在重命名的任务（它在 todos 里的位置）
@@ -107,6 +113,7 @@ let attachmentError = null; // 附件保存失败时的提示文字
 let expandedGroups = [];    // 哪些"已完成/已放弃"分组是展开的，只记在内存里
 let currentTab = 'tasks';   // 底部标签栏当前在哪一页：tasks（清单）/ today（今天）/ logs（打卡）
 let suppressNextClick = false;  // 拖动结束后紧跟着的那一次点击要忽略掉
+let listTagFilter = 'all';  // 清单页顶部选中了哪个：'all'（所有）/ 'archived'（已归档）/ 某个标签的 id
 
 // 把"临时"的界面状态清空（数据状态不动）
 function resetViewState() {
@@ -121,6 +128,8 @@ function resetViewState() {
   expandedGroups = [];
   currentTab = 'tasks';      // 每次打开都从"清单"页开始
   suppressNextClick = false; // 万一上一次拖拽没正常收尾，别把下一次点击也吞掉
+  listTagFilter = 'all';     // 清单页每次打开都从"所有"开始
+  resetTagViewState();       // 标签输入框、长按管理条（在 tags.js 里，两页共用）
   resetLogViewState();       // 打卡模块自己的界面状态（在 logs.js 里）
 }
 
@@ -131,7 +140,9 @@ function initApp(element) {
   categories = loadCategories();
   todos = loadTodos();
   collapsed = loadCollapsed();
-  logTags = loadLogTags();     // 先读标签：读项目时要对照它，把已经不存在的标签去掉
+  listTags = loadListTags();   // 先读标签：读清单归属时要对照它，把已经不存在的标签去掉
+  categoryMeta = loadCategoryMeta();
+  logTags = loadLogTags();     // 同理，打卡也是先读标签再读项目
   logItems = loadLogItems();
   render();
 }
@@ -193,6 +204,38 @@ function loadCollapsed() {
 
 function saveCollapsed() {
   storage.setItem('collapsed', JSON.stringify(collapsed));
+}
+
+function loadListTags() {
+  const saved = storage.getItem('listTags');
+  return saved ? JSON.parse(saved) : [];
+}
+
+function saveListTags() {
+  storage.setItem('listTags', JSON.stringify(listTags));
+}
+
+// 读"清单放在哪个标签下、有没有归档"时顺手把数据理干净：
+// 已经不存在的清单去掉；指向不存在的标签的去掉；已归档的不该还在标签下。
+// 要对照清单列表和标签列表，所以必须排在读这两样之后
+function loadCategoryMeta() {
+  const saved = storage.getItem('categoryMeta');
+  const parsed = saved ? JSON.parse(saved) : {};
+  const meta = {};
+
+  categories.forEach((category) => {
+    const entry = parsed[category];
+    if (!entry) return;
+    const archived = entry.archived === true;
+    const tagId = !archived && findListTag(entry.tagId) ? entry.tagId : null;
+    if (archived || tagId) meta[category] = { tagId: tagId, archived: archived };
+  });
+
+  return meta;
+}
+
+function saveCategoryMeta() {
+  storage.setItem('categoryMeta', JSON.stringify(categoryMeta));
 }
 
 // ---- 时间相关的小工具 ----
@@ -452,10 +495,12 @@ function commitTodoDrag(item) {
   );
 }
 
-// 松手后：按页面上的顺序重排清单
+// 松手后：按页面上的顺序重排清单。
+// 筛选状态下页面上只有一部分清单，要先把它们的新顺序拼回完整列表
 function commitCategoryDrag() {
   const container = appEl.querySelector('#category-list');
-  applyCategoryOrder([...container.children].map((section) => section.dataset.category));
+  const visibleNames = [...container.children].map((section) => section.dataset.category);
+  applyCategoryOrder(mergeVisibleCategoryOrder(visibleNames));
 }
 
 // ---- 底部标签栏 ----
@@ -476,6 +521,8 @@ function createTabBar() {
     btn.addEventListener('click', () => {
       if (closeMenuIfOpen()) return;
       currentTab = tab.key;
+      // 标签的输入框和长按管理条是两页共用的状态，换页时收起，别带到另一页去
+      resetTagViewState();
       render();
     });
 
@@ -496,16 +543,48 @@ function createTabBar() {
 function createTasksView() {
   const view = document.createElement('div');
 
+  // 选中的标签万一已经不在了，退回"所有"，别停在一个看不见的筛选上
+  if (listTagFilter !== 'all' && listTagFilter !== 'archived' && !findListTag(listTagFilter)) {
+    listTagFilter = 'all';
+  }
+
+  // 顶部标签行（和打卡页共用，在 tags.js 里）
+  view.appendChild(createTagBar(listTagSet));
+
+  const shown = categoriesInFilter(listTagFilter);
+  const message = listEmptyMessage(shown);
+  if (message) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.textContent = message;
+    view.appendChild(empty);
+  }
+
   // 清单单独放一个容器里，拖拽排序时要靠它来算位置
   const categoryList = document.createElement('div');
   categoryList.id = 'category-list';
-  categories.forEach((category) => {
+  shown.forEach((category) => {
     categoryList.appendChild(createCategorySection(category));
   });
 
   view.appendChild(categoryList);
-  view.appendChild(createNewCategoryRow());
+  // "已归档"下面不给新建入口：新建的清单不是归档状态，建完会立刻从这一页消失
+  if (listTagFilter !== 'archived') {
+    view.appendChild(createNewCategoryRow());
+  }
   return view;
+}
+
+// 筛选后一个清单都没有时说什么。一个清单都没建过的新用户不用提示，下面就是"+ 新建清单"
+function listEmptyMessage(shown) {
+  if (shown.length > 0) return '';
+  if (listTagFilter === 'archived') {
+    return '还没有归档的清单。暂时不用的清单，可以在它的 ⋯ 菜单里归档。';
+  }
+  if (listTagFilter === 'all') {
+    return categories.length > 0 ? '没有正在用的清单，归档了的在「已归档」里。' : '';
+  }
+  return '这个标签下还没有清单。停在这里新建清单，或者在清单的 ⋯ 菜单里放进来。';
 }
 
 // ---- "今天"标签页 ----
@@ -529,6 +608,7 @@ function createTodayView() {
   todos.forEach((todo, index) => {
     if (todo.status !== 'active') return;   // 做完的和放弃的不用再操心
     if (!todo.dueAt) return;                // 没设截止时间的不算"今天要做"
+    if (isCategoryArchived(todo.category)) return;   // 归档了的清单暂时不用，别来打扰
 
     const due = new Date(todo.dueAt).getTime();
     if (due < dayStart) {
@@ -931,7 +1011,8 @@ function createNewCategoryRow() {
   input.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
       skipBlur = true;
-      addCategory(input.value);   // 名字为空或重名时内部会忽略
+      // 停在某个标签下新建的，直接放进这个标签。名字为空或重名时内部会忽略
+      addCategory(input.value, findListTag(listTagFilter) ? listTagFilter : null);
       addingCategory = false;
       render();
     } else if (event.key === 'Escape') {
@@ -1045,6 +1126,7 @@ function createMenu(key, items, buttonClass) {
       } else {
         const row = document.createElement('div');
         row.className = item.danger ? 'menu-item danger' : 'menu-item';
+        if (item.checked) row.classList.add('checked');   // 右边打个勾（勾是 CSS 画的，文字不变）
         row.textContent = item.text;
         row.addEventListener('click', () => {
           openMenuKey = null;
@@ -1061,7 +1143,9 @@ function createMenu(key, items, buttonClass) {
 }
 
 function createCategoryMenu(category) {
-  const position = categories.indexOf(category);
+  // 上移下移按页面上看得见的清单算，筛选状态下才不会"点了没反应"
+  const visible = categoriesInFilter(listTagFilter);
+  const position = visible.indexOf(category);
   const items = [
     { text: '重命名', action: () => { editingCategory = category; render(); } }
   ];
@@ -1069,11 +1153,32 @@ function createCategoryMenu(category) {
   if (position > 0) {
     items.push({ text: '上移', action: () => moveCategory(category, -1) });
   }
-  if (position < categories.length - 1) {
+  if (position !== -1 && position < visible.length - 1) {
     items.push({ text: '下移', action: () => moveCategory(category, 1) });
   }
 
+  // 放到哪个标签下。像文件夹一样只能选一个，当前所在的打勾
+  const archived = isCategoryArchived(category);
+  if (!archived && listTags.length > 0) {
+    const current = categoryTagOf(category);
+    items.push({ type: 'divider' });
+    items.push({ type: 'label', text: '放到标签' });
+    listTags.forEach((tag) => {
+      items.push({
+        text: tag.name,
+        checked: tag.id === current,
+        action: () => setCategoryTag(category, tag.id)
+      });
+    });
+    if (current) {
+      items.push({ text: '不放进标签', action: () => setCategoryTag(category, null) });
+    }
+  }
+
   items.push({ type: 'divider' });
+  items.push(archived
+    ? { text: '取消归档', action: () => unarchiveCategory(category) }
+    : { text: '归档', action: () => archiveCategory(category) });
   items.push({ text: '删除清单', danger: true, action: () => deleteCategory(category) });
 
   return createMenu('category-' + category, items);
@@ -1100,8 +1205,8 @@ function todoMenuItems(index) {
     items.push({ text: '重新拾起', action: () => setStatus(index, 'active') });
   }
 
-  // 其它清单，用来做"移动到"
-  const others = categories.filter((name) => name !== todo.category);
+  // 其它清单，用来做"移动到"。归档了的清单不列：暂时不用的地方，不该往里放东西
+  const others = categories.filter((name) => name !== todo.category && !isCategoryArchived(name));
   if (others.length > 0) {
     items.push({ type: 'divider' });
     items.push({ type: 'label', text: '移动到' });
@@ -1457,15 +1562,147 @@ function addTodo(category, text) {
   return true;
 }
 
-function addCategory(name) {
+// tagId：新清单直接放进哪个标签（停在某个标签下新建时用），不放就传 null
+function addCategory(name, tagId = null) {
   const trimmed = name.trim();
   // 名字为空或者已经有同名清单，就什么都不做
   if (trimmed === '' || categories.includes(trimmed)) return false;
 
   categories.push(trimmed);
+  // 万一有个同名的老记录（理论上删清单时已经清掉了），新清单也不该继承它
+  delete categoryMeta[trimmed];
+  if (findListTag(tagId)) categoryMeta[trimmed] = { tagId: tagId, archived: false };
+
   saveCategories();
+  saveCategoryMeta();
   render();
   return true;
+}
+
+// ---- 清单的标签和归档 ----
+// 交给 tags.js 里共用界面的"标签集"：告诉它清单页的标签在哪、怎么改
+const listTagSet = {
+  scope: 'lists',
+  tags: () => listTags,
+  filter: () => listTagFilter,
+  setFilter: (filter) => { listTagFilter = filter; },
+  add: (name) => addListTag(name),
+  rename: (id, name) => renameListTag(id, name),
+  remove: (id) => deleteListTag(id)
+};
+
+function findListTag(id) {
+  return listTags.find((tag) => tag.id === id) || null;
+}
+
+function categoryTagOf(category) {
+  return categoryMeta[category] ? categoryMeta[category].tagId : null;
+}
+
+function isCategoryArchived(category) {
+  return Boolean(categoryMeta[category] && categoryMeta[category].archived);
+}
+
+// 改某个清单的归属。回到默认值（不在标签下、没归档）时把记录删掉，免得存一堆没用的
+function setCategoryMeta(category, tagId, archived) {
+  if (tagId || archived) {
+    categoryMeta[category] = { tagId: tagId, archived: archived };
+  } else {
+    delete categoryMeta[category];
+  }
+}
+
+// 返回新建的标签，建不成（空名、重名、叫"所有""已归档"）返回 null
+function addListTag(name) {
+  const trimmed = name.trim();
+  if (!isValidTagName(listTags, trimmed)) return null;
+
+  const tag = { id: makeTagId('ltag'), name: trimmed };
+  listTags.push(tag);
+  saveListTags();
+  render();
+  return tag;
+}
+
+function renameListTag(id, newName) {
+  const tag = findListTag(id);
+  const trimmed = newName.trim();
+  if (!tag || trimmed === tag.name || !isValidTagName(listTags, trimmed, id)) return false;
+
+  tag.name = trimmed;     // 清单记的是标签 id，所以只改这一处
+  saveListTags();
+  render();
+  return true;
+}
+
+// 删标签不删清单：放在这个标签下的清单还在，只是不在任何标签下了
+function deleteListTag(id) {
+  const tag = findListTag(id);
+  if (!tag) return false;
+
+  const users = categories.filter((category) => categoryTagOf(category) === id);
+  if (users.length > 0) {
+    const ok = confirmFn(`有 ${users.length} 个清单放在「${tag.name}」标签下。删除标签不会删掉这些清单和里面的任务，确定吗？`);
+    if (!ok) return false;
+  }
+
+  listTags = listTags.filter((other) => other.id !== id);
+  users.forEach((category) => setCategoryMeta(category, null, false));
+  // 正停在这个标签下的话，它没了就回到"所有"
+  if (listTagFilter === id) listTagFilter = 'all';
+
+  saveListTags();
+  saveCategoryMeta();
+  render();
+  return true;
+}
+
+// 把清单放进某个标签（像放进文件夹，原来在哪个标签下就从那里拿出来）。
+// tagId 传 null 就是"不放进标签"。归档了的清单不能放
+function setCategoryTag(category, tagId) {
+  if (!categories.includes(category) || isCategoryArchived(category)) return false;
+  if (tagId !== null && !findListTag(tagId)) return false;
+
+  setCategoryMeta(category, tagId, false);
+  saveCategoryMeta();
+  render();
+  return true;
+}
+
+// 归档：暂时不用的清单。拿掉它的标签；里面的任务不再出现在"今天"页、也不再提醒
+function archiveCategory(category) {
+  if (!categories.includes(category) || isCategoryArchived(category)) return false;
+
+  setCategoryMeta(category, null, true);
+  if (addingTaskIn === category) addingTaskIn = null;
+  saveCategoryMeta();
+  render();
+  return true;
+}
+
+// 取消归档。归档时拿掉的标签找不回来了，要用的话重新放
+function unarchiveCategory(category) {
+  if (!isCategoryArchived(category)) return false;
+
+  setCategoryMeta(category, null, false);
+  saveCategoryMeta();
+  render();
+  return true;
+}
+
+// 顶部选中某一项时，下面列出哪些清单（按原来的顺序）
+function categoriesInFilter(filter) {
+  if (filter === 'archived') return categories.filter((category) => isCategoryArchived(category));
+  if (filter === 'all') return categories.filter((category) => !isCategoryArchived(category));
+  return categories.filter((category) => categoryTagOf(category) === filter);
+}
+
+// 筛选状态下页面上只看得到一部分清单，拖完只知道"这几个"的新顺序。
+// 把它们按新顺序填回原来占的那几个位置，看不见的清单原地不动
+function mergeVisibleCategoryOrder(visibleNames) {
+  const visible = new Set(visibleNames);
+  let next = 0;
+  return categories.map((category) => (visible.has(category) ? visibleNames[next++] : category));
 }
 
 function toggleCollapse(category) {
@@ -1567,6 +1804,7 @@ function checkReminders() {
     if (todo.remindBefore === null) return;  // 用户选了不提醒
     if (todo.reminded) return;           // 已经提醒过了，不重复打扰
     if (todo.status !== 'active') return;    // 做完的和放弃的都不用提醒
+    if (isCategoryArchived(todo.category)) return;   // 清单归档了也不提醒。取消归档后还没过点的照常提醒
 
     const fireAt = new Date(todo.dueAt).getTime() - todo.remindBefore * 60 * 1000;
     if (now < fireAt) return;            // 还没到时候
@@ -1730,22 +1968,33 @@ function renameCategory(oldName, newName) {
     }
   });
   collapsed = collapsed.map((name) => (name === oldName ? trimmed : name));
+  // 放在哪个标签下、有没有归档，也是按名字记的
+  if (categoryMeta[oldName]) {
+    categoryMeta[trimmed] = categoryMeta[oldName];
+    delete categoryMeta[oldName];
+  }
 
   saveCategories();
   saveTodos();
   saveCollapsed();
+  saveCategoryMeta();
   render();
   return true;
 }
 
 function moveCategory(category, offset) {
-  const from = categories.indexOf(category);
+  // 和"页面上看得见的"相邻清单交换。筛选状态下，数组里的邻居可能正好是看不见的那个，
+  // 和它换的话用户会觉得点了没反应
+  const visible = categoriesInFilter(listTagFilter);
+  const from = visible.indexOf(category);
   const to = from + offset;
-  if (to < 0 || to >= categories.length) return false;
+  if (from === -1 || to < 0 || to >= visible.length) return false;
 
-  // 和相邻的那个清单交换位置
-  categories[from] = categories[to];
-  categories[to] = category;
+  const other = visible[to];
+  const a = categories.indexOf(category);
+  const b = categories.indexOf(other);
+  categories[a] = other;
+  categories[b] = category;
 
   saveCategories();
   render();
@@ -1766,6 +2015,7 @@ function deleteCategory(category) {
   categories = categories.filter((name) => name !== category);
   todos = todos.filter((todo) => todo.category !== category);
   collapsed = collapsed.filter((name) => name !== category);
+  delete categoryMeta[category];  // 不删的话，以后再建个同名清单会莫名其妙出现在某个标签下
   deleteAttachmentsOf(removed);   // 连带删掉这些任务的附件文件
   if (addingTaskIn === category) addingTaskIn = null;
   if (editingCategory === category) editingCategory = null;
@@ -1773,6 +2023,7 @@ function deleteCategory(category) {
   saveCategories();
   saveTodos();
   saveCollapsed();
+  saveCategoryMeta();
   render();
   return true;
 }

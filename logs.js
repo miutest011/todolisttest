@@ -2,8 +2,8 @@
 //
 // 和待办清单是两块互不相干的数据，各存各的。
 // 这个文件用到 app.js 里的公共工具（storage、nowFn、confirmFn、render、createMenu、
-// createRenameInput、createDetailRow、formatDateTime、closeMenuIfOpen、longPressDelay、MOVE_THRESHOLD），
-// 所以页面里必须排在 app.js 后面加载。
+// createRenameInput、createDetailRow、formatDateTime、closeMenuIfOpen），
+// 标签界面用的是 tags.js 里的共用组件，所以页面里必须排在 app.js 和 tags.js 后面加载。
 
 const LOG_DAY_MS = 24 * 60 * 60 * 1000;
 const LOG_WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];   // 月历周一开头
@@ -24,9 +24,9 @@ let logItems = [];
 // 项目身上只记标签的 id，理由同上：标签改名时不用去每个项目里同步。
 //
 // "所有"和"已归档"不是真的标签，只是两种筛选方式，所以不存在这里。
-// 已归档的项目身上一定没有标签 —— 归档时清掉，读数据时也会再检查一遍
+// 已归档的项目身上一定没有标签 —— 归档时清掉，读数据时也会再检查一遍。
+// 标签的界面（顶部标签行、长按管理、点选）在 tags.js 里，和清单页共用
 let logTags = [];
-const LOG_RESERVED_TAG_NAMES = ['所有', '已归档'];   // 用户建的标签不能叫这两个名字，不然顶部分不清
 
 // ---- 界面状态 ----
 // 这些全都要在 resetLogViewState() 里重置，否则会在测试之间、或者重开 App 时泄漏
@@ -37,9 +37,6 @@ let backfillingDay = null;     // 正在给哪一天补录（也是 '2026-09-11'
 let logItemDraft = null;       // 正在新增的打卡项目 { name, tagIds }，null = 没在新增
 let editingLogItemId = null;   // 正在改名的打卡项目
 let logTagFilter = 'all';      // 顶部选中了哪个：'all'（所有）/ 'archived'（已归档）/ 某个标签的 id
-let addingLogTagIn = null;     // 哪里的"+ 新增"正在输入标签名：'bar' 顶部 / 'draft' 新增项目时 / 'detail' 详情页
-let managingLogTagId = null;   // 长按了哪个标签（下面正显示"改名 / 删除"）
-let renamingLogTagId = null;   // 正在改名的标签
 let undoToast = null;          // 刚打完卡时底部的"撤销"提示：{ itemId, entry }
 let undoToastTimer = null;
 let undoToastDuration = 4000;  // 撤销提示显示多久（毫秒）
@@ -56,9 +53,6 @@ function resetLogViewState() {
   logItemDraft = null;
   editingLogItemId = null;
   logTagFilter = 'all';        // 每次打开都从"所有"开始
-  addingLogTagIn = null;
-  managingLogTagId = null;
-  renamingLogTagId = null;
   hideUndoToast();
 }
 
@@ -234,17 +228,23 @@ function deleteLogItem(id) {
 }
 
 // ---- 标签 ----
-function isValidLogTagName(name, exceptId = null) {
-  if (name === '' || LOG_RESERVED_TAG_NAMES.includes(name)) return false;
-  return !logTags.some((tag) => tag.id !== exceptId && tag.name === name);
-}
+// 交给 tags.js 里共用界面的"标签集"：告诉它这一页的标签在哪、怎么改
+const logTagSet = {
+  scope: 'logs',
+  tags: () => logTags,
+  filter: () => logTagFilter,
+  setFilter: (filter) => { logTagFilter = filter; },
+  add: (name) => addLogTag(name),
+  rename: (id, name) => renameLogTag(id, name),
+  remove: (id) => deleteLogTag(id)
+};
 
 // 返回新建的标签（新增项目时要拿它的 id 顺手选上），建不成返回 null
 function addLogTag(name) {
   const trimmed = name.trim();
-  if (!isValidLogTagName(trimmed)) return null;
+  if (!isValidTagName(logTags, trimmed)) return null;
 
-  const tag = { id: makeLogId('tag'), name: trimmed };
+  const tag = { id: makeTagId('tag'), name: trimmed };
   logTags.push(tag);
   saveLogTags();
   render();
@@ -254,7 +254,7 @@ function addLogTag(name) {
 function renameLogTag(id, newName) {
   const tag = findLogTag(id);
   const trimmed = newName.trim();
-  if (!tag || trimmed === tag.name || !isValidLogTagName(trimmed, id)) return false;
+  if (!tag || trimmed === tag.name || !isValidTagName(logTags, trimmed, id)) return false;
 
   tag.name = trimmed;     // 项目身上记的是 id，所以只改这一处
   saveLogTags();
@@ -281,8 +281,6 @@ function deleteLogTag(id) {
 
   // 正停在这个标签下的话，它没了就回到"所有"，不然页面上什么都选不中
   if (logTagFilter === id) logTagFilter = 'all';
-  if (managingLogTagId === id) managingLogTagId = null;
-  if (renamingLogTagId === id) renamingLogTagId = null;
 
   saveLogTags();
   saveLogItems();
@@ -430,10 +428,7 @@ function createLogsView() {
     logTagFilter = 'all';
   }
 
-  view.appendChild(createLogTagBar());
-
-  const managing = findLogTag(managingLogTagId);
-  if (managing) view.appendChild(createLogTagManager(managing));
+  view.appendChild(createTagBar(logTagSet));
 
   const items = logItemsInFilter(logTagFilter);
   if (items.length === 0) {
@@ -465,226 +460,6 @@ function logEmptyMessage() {
     return '没有进行中的打卡项目，归档了的在「已归档」里。';
   }
   return '这个标签下还没有打卡项目。新增时选上它，或者在项目详情页里加上。';
-}
-
-// ---- 顶部标签行：所有 | 用户的标签… | 已归档 | + 新增 ----
-// 标签多了放不下时横着滑，不换行
-function createLogTagBar() {
-  const bar = document.createElement('div');
-  bar.className = 'log-tag-bar';
-
-  bar.appendChild(createLogFilterChip('所有', 'all', null));
-  logTags.forEach((tag) => bar.appendChild(createLogFilterChip(tag.name, tag.id, tag)));
-  bar.appendChild(createLogFilterChip('已归档', 'archived', null));
-
-  if (addingLogTagIn === 'bar') {
-    bar.appendChild(createLogTagInput(() => {}));   // 建完就行，顶部不用顺手选上什么
-  } else {
-    const add = document.createElement('button');
-    add.className = 'log-tag log-tag-new';
-    add.textContent = '+ 新增';
-    add.addEventListener('click', () => {
-      if (closeMenuIfOpen()) return;
-      addingLogTagIn = 'bar';
-      render();
-    });
-    bar.appendChild(add);
-  }
-
-  return bar;
-}
-
-// tag 为 null 表示"所有""已归档"这两个固定项，它们不能长按改名删除
-function createLogFilterChip(label, filter, tag) {
-  const chip = document.createElement('button');
-  chip.className = 'log-tag';
-  chip.textContent = label;
-  chip.dataset.filter = filter;
-  if (logTagFilter === filter) chip.classList.add('active');
-  if (tag && managingLogTagId === tag.id) chip.classList.add('managing');
-
-  chip.addEventListener('click', () => {
-    if (closeMenuIfOpen()) return;
-    logTagFilter = filter;
-    // 点别的标签就收起"改名 / 删除"。
-    // 但点的正是长按的那个时不收：手指抬起后浏览器还会补发一次点击，
-    // 要是这里收起，刚长按出来的操作条会一闪就没
-    if (!tag || managingLogTagId !== tag.id) {
-      managingLogTagId = null;
-      renamingLogTagId = null;
-    }
-    render();
-  });
-
-  if (tag) {
-    onLongPress(chip, () => {
-      managingLogTagId = tag.id;
-      renamingLogTagId = null;
-      render();
-    });
-  }
-
-  return chip;
-}
-
-// 长按：手机上按住不放一会儿触发，电脑上用右键。
-// 按住时手指挪动了就取消 —— 那是在横着滑标签行，不是长按
-function onLongPress(element, callback) {
-  let timer = null;
-  let startX = 0;
-  let startY = 0;
-
-  const cancel = () => {
-    if (timer !== null) {
-      clearTimeout(timer);
-      timer = null;
-    }
-  };
-
-  element.addEventListener('pointerdown', (event) => {
-    if (event.pointerType !== 'touch') return;
-    startX = event.clientX;
-    startY = event.clientY;
-    cancel();
-    timer = setTimeout(() => {
-      timer = null;
-      callback();
-    }, longPressDelay);   // 和拖拽共用一个长按时长（在 app.js 里），手感一致
-  });
-
-  element.addEventListener('pointermove', (event) => {
-    if (Math.hypot(event.clientX - startX, event.clientY - startY) > MOVE_THRESHOLD) cancel();
-  });
-  element.addEventListener('pointerup', cancel);
-  element.addEventListener('pointercancel', cancel);   // 浏览器接管去滚动时会发这个
-
-  // 电脑上的右键。安卓长按也会发这个事件，可能和上面的计时器各触发一次，
-  // callback 只是设状态再重画，调两次结果一样，没关系
-  element.addEventListener('contextmenu', (event) => {
-    event.preventDefault();
-    cancel();
-    callback();
-  });
-}
-
-// 长按标签后出现在标签行下面的操作条
-function createLogTagManager(tag) {
-  const box = document.createElement('div');
-  box.className = 'log-tag-manager';
-
-  if (renamingLogTagId === tag.id) {
-    box.appendChild(createRenameInput(
-      tag.name,
-      (newName) => {
-        renamingLogTagId = null;
-        if (!renameLogTag(tag.id, newName)) render();
-      },
-      () => {
-        renamingLogTagId = null;
-        render();
-      }
-    ));
-    return box;
-  }
-
-  const label = document.createElement('span');
-  label.className = 'log-tag-manager-label';
-  label.textContent = `标签「${tag.name}」`;
-
-  const rename = document.createElement('button');
-  rename.className = 'log-tag-rename';
-  rename.textContent = '改名';
-  rename.addEventListener('click', () => {
-    renamingLogTagId = tag.id;
-    render();
-  });
-
-  const remove = document.createElement('button');
-  remove.className = 'log-tag-delete';
-  remove.textContent = '删除';
-  remove.addEventListener('click', () => deleteLogTag(tag.id));
-
-  const done = document.createElement('button');
-  done.className = 'log-tag-done';
-  done.textContent = '完成';
-  done.addEventListener('click', () => {
-    managingLogTagId = null;
-    render();
-  });
-
-  box.append(label, rename, remove, done);
-  return box;
-}
-
-// 输入新标签名字的小输入框，三个地方共用：顶部标签行、新增项目时、详情页。
-// 回车创建；Esc 或点到别处就算了。
-// onCreated 拿到新建的标签，调用方决定要不要顺手给项目选上它
-function createLogTagInput(onCreated) {
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.className = 'log-tag-input';
-  input.placeholder = '标签名';
-  // 新增项目时页面上同时有两个输入框，告诉 render() 光标该放这个
-  input.dataset.autofocus = 'true';
-
-  // 回车之后页面重画、输入框被删掉，浏览器还会补一次 blur，只处理第一次
-  let finished = false;
-
-  function finish(name) {
-    if (finished) return;
-    finished = true;
-    addingLogTagIn = null;
-    const tag = name === null ? null : addLogTag(name);
-    if (tag) {
-      onCreated(tag);
-    } else {
-      render();    // 空名、重名建不成，也要把输入框收起来
-    }
-  }
-
-  input.addEventListener('click', (event) => event.stopPropagation());
-  input.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') {
-      finish(input.value);
-    } else if (event.key === 'Escape') {
-      finish(null);
-    }
-  });
-  input.addEventListener('blur', () => finish(null));
-
-  return input;
-}
-
-// 一排可以点选的标签：点一下选上，再点取消。新增项目时和详情页里共用。
-// where 是这一处的名字（'draft' / 'detail'），用来判断"+ 新增标签"是不是正在这里输入
-function createLogTagPicker(selectedIds, onToggle, where, onCreated) {
-  const box = document.createElement('div');
-  box.className = 'log-tag-picker';
-
-  logTags.forEach((tag) => {
-    const option = document.createElement('button');
-    option.className = 'log-tag-option';
-    option.textContent = tag.name;
-    option.dataset.tagId = tag.id;
-    if (selectedIds.includes(tag.id)) option.classList.add('selected');
-    option.addEventListener('click', () => onToggle(tag.id));
-    box.appendChild(option);
-  });
-
-  if (addingLogTagIn === where) {
-    box.appendChild(createLogTagInput(onCreated));
-  } else {
-    const add = document.createElement('button');
-    add.className = 'log-tag-option log-tag-new';
-    add.textContent = '+ 新增标签';
-    add.addEventListener('click', () => {
-      addingLogTagIn = where;
-      render();
-    });
-    box.appendChild(add);
-  }
-
-  return box;
 }
 
 // 一个打卡项目：左边是名字和"上次打卡"，右边一个大数字（累计总次数）
@@ -769,7 +544,8 @@ function createNewLogItemRow() {
   // 注意这里不像别处那样"点到别处就收起"：
   // 下面就是要点的标签，点它们必然会让输入框失去焦点
 
-  const picker = createLogTagPicker(
+  const picker = createTagPicker(
+    logTagSet,
     draft.tagIds,
     (tagId) => {
       draft.tagIds = draft.tagIds.includes(tagId)
@@ -777,7 +553,7 @@ function createNewLogItemRow() {
         : draft.tagIds.concat(tagId);
       render();
     },
-    'draft',
+    'logs-draft',
     (tag) => {
       draft.tagIds = draft.tagIds.concat(tag.id);   // 在这里新建的标签，当然是想给它用的
       render();
@@ -805,7 +581,7 @@ function createNewLogItemRow() {
 function submitLogItemDraft() {
   const draft = logItemDraft;
   logItemDraft = null;
-  addingLogTagIn = null;
+  addingTagIn = null;
 
   // 名字为空或重名时不会新增，但编辑区还是要收起来
   if (!addLogItem(draft.name, draft.tagIds)) {
@@ -822,7 +598,7 @@ function submitLogItemDraft() {
 
 function cancelLogItemDraft() {
   logItemDraft = null;
-  addingLogTagIn = null;
+  addingTagIn = null;
   render();
 }
 
@@ -834,7 +610,7 @@ function createLogDetailPage(id) {
   const goBack = () => {
     logDetailId = null;
     editingLogItemId = null;
-    addingLogTagIn = null;
+    addingTagIn = null;
     render();
   };
 
@@ -906,10 +682,11 @@ function createLogItemTags(item) {
     return box;
   }
 
-  box.appendChild(createLogTagPicker(
+  box.appendChild(createTagPicker(
+    logTagSet,
     item.tagIds,
     (tagId) => toggleLogItemTag(item.id, tagId),
-    'detail',
+    'logs-detail',
     (tag) => toggleLogItemTag(item.id, tag.id)    // 在这里新建的标签，直接给这个项目加上
   ));
   return box;

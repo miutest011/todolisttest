@@ -8,7 +8,8 @@
 index.html   只有骨架：几个 <script> 加一句 initApp()。逻辑一行都不放
 style.css    全部样式，开头是 :root 设计变量
 app.js       待办清单：清单 / 今天 / 详情页 / 提醒 / 附件 / 拖拽 / 通用组件
-logs.js      打卡：独立的一块数据和界面，只借用 app.js 的通用组件
+tags.js      标签界面（顶部标签行、长按管理、点选），清单页和打卡页共用
+logs.js      打卡：独立的一块数据和界面，借用 app.js 和 tags.js 的通用组件
 sw.js        离线缓存
 tools/       测试工具（自成一套，见 tools/README.md）
 ```
@@ -83,6 +84,16 @@ function useStorage(fake) { storage = fake; }
 - `createMenu(key, items, buttonClass)` — ⋯ 菜单。`key` 用来记住"当前展开的是哪个菜单"，
   `items` 是 `{ label, onClick }` 数组，`buttonClass` 传 `'round-btn'` 就是悬浮圆形款。
 - `createIcon(name, className)` — 从 `ICON_PATHS` 取 SVG 路径画图标。
+- **`tags.js` 里的标签界面** — `createTagBar(set)`（顶部"所有 | 标签… | 已归档 | + 新增"加长按管理条）、
+  `createTagPicker(set, …)`（可点选的一排标签）、`onLongPress(element, callback)`。
+  清单页和打卡页各传一个"标签集"进去（`listTagSet` / `logTagSet`），说明自己的标签数组、筛选状态、增删改函数。
+  **界面状态（`addingTagIn` / `managingTagId` / `renamingTagId`）两页共用**，换底部页面时要收起。
+  第三个页面要标签时，照着这两个标签集再写一个，别复制界面代码。
+- 菜单项支持 `checked: true`（右边打勾），用于"放到标签"这种单选。
+
+**两页先各写一份、第二次用到时再抽出来**，这次标签就是这么做的：打卡先做完、测试齐了，
+做清单时才抽成 `tags.js`。先抽象再使用的话，往往猜错哪些地方需要可变。
+抽的时候，已有的那 30 多条测试就是安全网——只需要改测试里的 class 名和变量名，行为断言一条不动。
 
 **抽公共组件时有两个固定动作**：
 
@@ -124,6 +135,10 @@ SVG 路径存在 `app.js` 的 `ICON_PATHS` 里，用 `currentColor` 描边，颜
 - **认 id，不认名字和下标。** 打卡项目用 `id`，所以改名不需要到处同步。
   待办目前还在用清单名做关联，代价就是每次改名都得连带更新任务归属和折叠状态记录
   （有专门的测试盯着这件事）。**新数据一律带 id。**
+  清单的"放在哪个标签下、有没有归档"（`categoryMeta`）因为清单本身没 id，只能也按名字记，
+  所以清单改名 / 删除时要同步的地方又多了一处。**清单改用 id 是欠下的技术债**，适合单独找一次来还，别和新功能混着做。
+- **有依赖关系的数据，读取顺序要对。** 读项目时要对照标签清理无效 id，所以必须先读标签。
+  顺序反了，测试里常常看不出来（内存里残留着上一步的标签），手机冷启动时却会清空用户所有标签。
 - **状态用字符串枚举，不用布尔。** 任务是 `status: 'active' | 'done' | 'abandoned'`。
   原来的 `done: true/false` 在加"已放弃"时就撑不住了。
 - **迁移老数据时要把老字段删掉。** 从 `done` 迁到 `status` 时如果两个字段都留着，
