@@ -1,4 +1,5 @@
-// 手机上用起来顺不顺手：右下角的新建按钮、新建面板、防止页面被放大。
+// 手机上用起来顺不顺手：右下角的新建按钮、新建面板、防止页面被放大、
+// 一次只展开一个清单、打字时收起底部。
 // 复用前面几个文件里的工具（setup、click、logItem、listTag、tagChip……），所以排在它们后面加载。
 
 // 有几条检查要看"真实的样式"（按钮是不是浮着的、输入框字号多大），
@@ -38,7 +39,7 @@ test('新建按钮：清单页和打卡页都有，底部原来的"+ 新建"不�
 
   const fab = root.querySelector('.fab');
   assert(fab, '清单页有 + 按钮');
-  assertEqual(fab.getAttribute('aria-label'), '新建清单', '按钮上只有个 + 号，要告诉读屏软件它是干嘛的');
+  assertEqual(fab.getAttribute('aria-label'), '新建任务', '按钮上只有个 + 号，要告诉读屏软件它是干嘛的');
   assertEqual(root.querySelector('#new-category-btn'), null, '列表底部的旧按钮去掉了');
 
   openLogsTab(root);
@@ -128,7 +129,7 @@ test('新建面板：点 + 打开，标题对、光标自动在名字框里', ()
   click(root.querySelector('.fab'));
 
   assert(root.querySelector('.popup-overlay'), '有暗色遮罩');
-  assertEqual(root.querySelector('.popup-title').textContent, '新建清单', '标题说清在建什么');
+  assertEqual(root.querySelector('.popup-title').textContent, '新建任务', '标题说清在建什么');
   assert(document.activeElement === root.querySelector('.popup-card .add-input'), '光标直接在名字框里，点开就能打字');
 
   openLogsTab(root);
@@ -146,34 +147,39 @@ test('新建面板：点卡片外面的暗色区域就关掉，点卡片里面�
 
   click(root.querySelector('.popup-overlay'));
   assertEqual(root.querySelector('.popup-card'), null, '点外面关掉');
-  assertEqual(categoryDraft, null, '状态也清了');
+  assertEqual(taskDraft, null, '状态也清了');
 });
 
 test('新建面板：按 Esc 或点"取消"都关掉，什么都不建', () => {
   const { root } = setup({ categories: ['工作'] });
 
   click(root.querySelector('.fab'));
-  typeInto(root.querySelector('.popup-card .add-input'), '生活');
+  typeInto(root.querySelector('.popup-card .add-input'), '写周报');
   press(root.querySelector('.popup-card .add-input'), 'Escape');
   assertEqual(root.querySelector('.popup-card'), null, 'Esc 关掉');
 
   click(root.querySelector('.fab'));
-  typeInto(root.querySelector('.popup-card .add-input'), '生活');
+  typeInto(root.querySelector('.popup-card .add-input'), '写周报');
   click(root.querySelector('.popup-cancel'));
   assertEqual(root.querySelector('.popup-card'), null, '取消关掉');
 
-  assertEqual(categories, ['工作'], '两次都没建');
+  assertEqual(todos, [], '两次都没加');
 });
 
 test('新建面板：重新打开应用时，开着的面板不会留着', () => {
   const { root } = setup({ categories: ['工作'] });
+  // 三个面板都真的打开一遍 —— 只开其中一个的话，另外两个"状态是空的"本来就成立，查了等于没查
+  // （真踩过：+ 从新建清单改成新建任务后，这里没跟着改，"漏重置新建清单面板"的变异就没被抓到）
   click(root.querySelector('.fab'));
+  click(root.querySelector('.tag-row .menu-btn'));
+  click(menuItemNamed(root, '新建清单'));
   openLogsTab(root);
   click(root.querySelector('.fab'));
+  assert(taskDraft && categoryDraft && logItemDraft, '先确认三个面板都开着');
 
   initApp(root);
 
-  assertEqual([categoryDraft, logItemDraft], [null, null], '两边的面板状态都清掉');
+  assertEqual([taskDraft, categoryDraft, logItemDraft], [null, null, null], '几个面板的状态都清掉');
   assertEqual(root.querySelector('.popup-card'), null, '页面上也没有');
 });
 
@@ -227,6 +233,10 @@ test('防缩放：所有输入框字号都不小于 16px（小于 16px 时 iPhon
   checkAll('顶部新建标签');
   press(root.querySelector('.tag-input'), 'Escape');
   click(root.querySelector('.fab'));
+  checkAll('新建任务面板');
+  click(root.querySelector('.popup-cancel'));
+  click(root.querySelector('.tag-row .menu-btn'));
+  click(menuItemNamed(root, '新建清单'));
   click(tagOption(root, '+ 新增标签'));
   checkAll('新建清单面板');
   click(root.querySelector('.popup-cancel'));
@@ -251,4 +261,320 @@ test('防缩放：所有输入框字号都不小于 16px（小于 16px 时 iPhon
   // 确认真的查到了各种输入框，而不是某一步没打开、查了个寂寞
   ['add-input', 'edit-input', 'tag-input', 'note-input', 'due-input', 'remind-select', 'backfill-time']
     .forEach((name) => assert(checked.has(name), `没查到 .${name}，检查不完整`));
+});
+
+
+
+// ========== 一次只展开一个清单 ==========
+
+// 页面上某个清单区块里的任务文字
+function tasksIn(root, category) {
+  const section = [...root.querySelectorAll('.category')].find((s) => s.dataset.category === category);
+  return section ? textsOf(section, '.todo-text') : null;
+}
+
+function headerOf(root, category) {
+  return [...root.querySelectorAll('.category')].find((s) => s.dataset.category === category).querySelector('.category-header');
+}
+
+test('一次只展开一个清单：点开一个，其它的自动收起；再点一下就收起来', () => {
+  const { root, storage } = setup({
+    categories: ['工作', '生活', '学习'],
+    todos: [
+      { text: '写周报', status: 'active', category: '工作' },
+      { text: '买菜', status: 'active', category: '生活' }
+    ],
+    expandedCategory: '工作'
+  });
+  assertEqual([tasksIn(root, '工作'), tasksIn(root, '生活')], [['写周报'], []], '一开始只展开工作');
+
+  click(headerOf(root, '生活'));
+  assertEqual([tasksIn(root, '工作'), tasksIn(root, '生活')], [[], ['买菜']], '点生活：生活展开，工作自动收起');
+  assertEqual(
+    [...root.querySelectorAll('.category-header')].map((h) => h.getAttribute('aria-expanded')),
+    ['false', 'true', 'false'],
+    '标着"展开"的也只有生活一个'
+  );
+  assertEqual(stored(storage, 'expandedCategory'), '生活', '要保存，下次打开还是它');
+
+  click(headerOf(root, '生活'));
+  assertEqual(tasksIn(root, '生活'), [], '再点一下收起来');
+  assertEqual(expandedCategory, null, '现在一个都没展开');
+});
+
+test('一次只展开一个清单：第一次打开时展开第一个清单', () => {
+  const { storage } = setup({ categories: ['工作', '生活'] });
+
+  assertEqual(expandedCategory, '工作', '什么记录都没有时，展开第一个');
+  assertEqual(stored(storage, 'expandedCategory'), '工作', '顺手存下来');
+});
+
+test('一次只展开一个清单：老版本的"折叠记录"会换算过来，老记录删掉', () => {
+  const { storage } = setup({ categories: ['工作', '生活', '学习'], collapsed: ['工作'] });
+
+  assertEqual(expandedCategory, '生活', '老版本里第一个没折叠的是生活，展开它');
+  assertEqual(storage.getItem('collapsed'), null, '老记录删掉，免得两处都记展开状态');
+  assertEqual(stored(storage, 'expandedCategory'), '生活', '新记录存好');
+});
+
+test('一次只展开一个清单：记录里的清单已经不在了，就一个都不展开', () => {
+  setup({ categories: ['工作'], expandedCategory: '早就删了的清单' });
+
+  assertEqual(expandedCategory, null, '不能指着一个不存在的清单');
+});
+
+test('一次只展开一个清单：新建的清单直接展开，马上就能往里加任务', () => {
+  const { root } = setup({ categories: ['工作'], expandedCategory: '工作' });
+
+  addCategory('生活');
+
+  assertEqual(expandedCategory, '生活', '新清单展开');
+  assert(root.querySelector('.category[data-category="生活"] .add-task'), '"+ 添加任务"就在眼前');
+});
+
+
+// ========== 把任务拖进收起来的清单 ==========
+
+test('拖任务到收起来的清单上：放进那个清单的最前面，两个清单都保持原样', () => {
+  const { root } = setup({
+    categories: ['工作', '生活'],
+    todos: [
+      { text: '写周报', status: 'active', category: '工作' },
+      { text: '开会', status: 'active', category: '工作' },
+      { text: '买菜', status: 'active', category: '生活' }
+    ],
+    expandedCategory: '工作'
+  });
+
+  const target = headerOf(root, '生活').getBoundingClientRect();
+  drag(itemNamed(root, '开会'), target.top + target.height / 2);
+
+  assertEqual(todos.filter((t) => t.category === '生活').map((t) => t.text), ['开会', '买菜'], '放进了生活，排在最前面');
+  assertEqual(tasksIn(root, '工作'), ['写周报'], '工作里少了它');
+  assertEqual(expandedCategory, '工作', '还是工作展开着：往往要一口气拖好几条过去，页面别跳');
+});
+
+test('拖任务到收起来的清单上：拖着经过时，占位行出现在那个清单下面', () => {
+  const { root } = setup({
+    categories: ['工作', '生活'],
+    todos: [{ text: '写周报', status: 'active', category: '工作' }],
+    expandedCategory: '工作'
+  });
+
+  const item = itemNamed(root, '写周报');
+  const target = headerOf(root, '生活').getBoundingClientRect();
+  // 只按下、移动，先不松手 —— 松手之后再查就晚了（之前有过一条假测试就是这么来的）
+  item.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 50, clientY: item.getBoundingClientRect().top + 5 }));
+  document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 50, clientY: target.top + target.height / 2 }));
+
+  const placeholder = root.querySelector('.drag-source');
+  assert(placeholder && placeholder.closest('.category').dataset.category === '生活', '占位行应该挪到了生活这个清单里');
+  assert(placeholder.parentNode.classList.contains('collapsed-drop'), '落在收起清单的那个空列表里');
+
+  document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+});
+
+
+// ========== 右下角 + 是新建任务 ==========
+
+function openTaskPanel(root) {
+  click(root.querySelector('.fab'));
+  return root.querySelector('.popup-card');
+}
+
+function typeTaskName(root, text) {
+  const input = root.querySelector('.popup-card .add-input');
+  typeInto(input, text);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  return input;
+}
+
+test('新建任务：默认放进展开着的清单，回车就加进去', () => {
+  const { root } = setup({ categories: ['工作', '生活'], expandedCategory: '生活' });
+
+  openTaskPanel(root);
+  assertEqual(textsOf(root, '.popup-card .list-option'), ['工作', '生活'], '列出可以放的清单');
+  assertEqual(textsOf(root, '.popup-card .list-option.selected'), ['生活'], '默认选中展开着的生活');
+
+  press(typeTaskName(root, '买菜'), 'Enter');
+
+  assertEqual(pick(todos[0], ['text', 'category', 'status']), { text: '买菜', category: '生活', status: 'active' }, '加进了生活');
+  assertEqual(tasksIn(root, '生活'), ['买菜'], '页面上看得到');
+  assertEqual(root.querySelector('.popup-card'), null, '面板收起');
+});
+
+test('新建任务：展开着的清单不在当前页面上时，默认放进页面上的第一个', () => {
+  const { root } = setup({
+    categories: ['工作', '生活', '学习'],
+    listTags: [listTag('公司')],
+    categoryMeta: { '学习': { tagId: 'ltag-公司', archived: false } },
+    expandedCategory: '工作'
+  });
+
+  click(tagChip(root, '公司'));
+  openTaskPanel(root);
+  assertEqual(textsOf(root, '.popup-card .list-option.selected'), ['学习'], '工作被筛掉了，默认选公司下的第一个');
+  click(root.querySelector('.popup-cancel'));
+
+  click(tagChip(root, '所有'));
+  toggleCollapse('工作');   // 全都收起来
+  openTaskPanel(root);
+  assertEqual(textsOf(root, '.popup-card .list-option.selected'), ['工作'], '一个都没展开时，默认第一个');
+});
+
+test('新建任务：点别的清单就换过去，打的字不会丢；加完展开那个清单', () => {
+  const { root, storage } = setup({ categories: ['工作', '生活'], expandedCategory: '工作' });
+
+  openTaskPanel(root);
+  typeTaskName(root, '买菜');
+  click([...root.querySelectorAll('.popup-card .list-option')].find((o) => o.textContent === '生活'));
+
+  assertEqual(textsOf(root, '.popup-card .list-option.selected'), ['生活'], '只能选一个，换成了生活');
+  assertEqual(root.querySelector('.popup-card .add-input').value, '买菜', '点清单会重画，打的字不能丢');
+
+  click(root.querySelector('.popup-submit'));
+
+  assertEqual(todos[0].category, '生活', '"添加"按钮也能加');
+  assertEqual(expandedCategory, '生活', '展开放进去的那个清单，让人看到刚加的任务');
+  assertEqual(stored(storage, 'expandedCategory'), '生活', '展开状态要保存');
+  assertEqual(tasksIn(root, '生活'), ['买菜'], '看得到');
+});
+
+test('新建任务：放进一个不在当前筛选里的清单，加完切回"所有"', () => {
+  const { root } = setup({
+    categories: ['工作', '生活'],
+    listTags: [listTag('公司')],
+    categoryMeta: { '工作': { tagId: 'ltag-公司', archived: false } },
+    expandedCategory: '工作'
+  });
+  click(tagChip(root, '公司'));
+
+  openTaskPanel(root);
+  typeTaskName(root, '买菜');
+  click([...root.querySelectorAll('.popup-card .list-option')].find((o) => o.textContent === '生活'));
+  click(root.querySelector('.popup-submit'));
+
+  assertEqual(textsOf(root, '.tag-chip.active'), ['所有'], '生活不在公司下，不切回所有的话就看不到刚加的任务');
+  assertEqual(tasksIn(root, '生活'), ['买菜'], '看得到');
+});
+
+test('新建任务：名字空着不加；归档了的清单不能选', () => {
+  const { root } = setup({
+    categories: ['工作', '旧项目'],
+    categoryMeta: { '旧项目': { tagId: null, archived: true } },
+    expandedCategory: '工作'
+  });
+
+  openTaskPanel(root);
+  assertEqual(textsOf(root, '.popup-card .list-option'), ['工作'], '归档的清单不列出来');
+  click(root.querySelector('.popup-submit'));
+
+  assertEqual(todos, [], '空名字不加');
+  assertEqual(root.querySelector('.popup-card'), null, '面板收起');
+});
+
+test('新建任务：清单都归档了（没地方放）时，不显示 + 按钮', () => {
+  const { root } = setup({ categories: ['旧项目'], categoryMeta: { '旧项目': { tagId: null, archived: true } } });
+
+  assertEqual(root.querySelector('.fab'), null, '没有能放任务的清单');
+});
+
+test('新建清单：在标签行右边的 ⋯ 里；打卡页的标签行没有这个 ⋯', () => {
+  const { root } = setup({ categories: ['工作'] });
+
+  click(root.querySelector('.tag-row .menu-btn'));
+  assertEqual(textsOf(root, '.tag-row .menu-item'), ['新建清单'], '菜单里是新建清单');
+  click(menuItemNamed(root, '新建清单'));
+  assertEqual(root.querySelector('.popup-title').textContent, '新建清单', '打开的是新建清单的面板');
+  click(root.querySelector('.popup-cancel'));
+
+  openLogsTab(root);
+  assertEqual(root.querySelector('.tag-row .menu-btn'), null, '打卡页用不着，不放');
+});
+
+
+// ========== 打字时收起底部的标签栏和 + 按钮 ==========
+
+// 测试页所在的浏览器窗口没有焦点时（比如开着测试页、人在别的窗口），
+// .focus() / .blur() 只会改 document.activeElement，不会发 focusin / focusout 事件 —— 真踩过，两条测试因此失败。
+// 手机上真实使用时这两个事件一定会发，所以这里按真实浏览器的顺序自己补发：
+// 先离开旧输入框（此时焦点已经不在它身上），发 focusout 并带上"焦点要去哪"，再进新输入框、发 focusin。
+// 窗口有焦点时浏览器自己也会发一遍，处理函数重复跑两次结果一样，不影响
+function focusField(field) {
+  field.focus();
+  field.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+}
+
+function leaveField(field, next = null) {
+  field.blur();
+  field.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: next }));
+  if (next) focusField(next);
+}
+
+test('打字时：光标进输入框就给应用加上 typing，离开就去掉', () => {
+  const { root } = setup({ categories: ['工作'], expandedCategory: '工作' });
+  addTodo('工作', '写周报');
+  click(root.querySelector('.todo-item'));      // 任务详情页：备注框不会自动拿到光标
+
+  const note = root.querySelector('.note-input');
+  assertEqual(root.classList.contains('typing'), false, '还没点进备注框，标签栏该在');
+
+  focusField(note);
+  assert(root.classList.contains('typing'), '点进备注框，开始打字');
+
+  leaveField(note);
+  assertEqual(root.classList.contains('typing'), false, '光标离开，标签栏要回来');
+});
+
+test('打字时：从一个输入框跳到另一个输入框，中间不会把标签栏放出来', () => {
+  const { root } = setup({ categories: ['工作'], expandedCategory: '工作' });
+  click(root.querySelector('.fab'));
+  const first = root.querySelector('.popup-card .add-input');
+  assert(root.classList.contains('typing'), '先确认在打字');
+
+  // 在应用里临时放一个输入框，模拟焦点从一个输入框移到另一个
+  const other = document.createElement('input');
+  root.appendChild(other);
+
+  // focusout 那一刻焦点已经离开旧输入框、还没落到新输入框上。这时要是去掉 typing，标签栏会闪一下。
+  // 注意要在 window 上听：事件从里往外传，挂在 root 上的话会比 app.js 挂在 document 上的处理先跑，
+  // 那时 typing 还没被动过，永远是 true —— 这条测试就成了假测试
+  const seen = [];
+  const record = () => seen.push(root.classList.contains('typing'));
+  window.addEventListener('focusout', record);
+  onCleanup(() => window.removeEventListener('focusout', record));
+
+  leaveField(first, other);
+
+  assertEqual(seen, [true], '跳转的那一刻 typing 还在（看的是焦点要去哪，而不是焦点现在在哪）');
+  assert(root.classList.contains('typing'), '到了新输入框，还是在打字');
+});
+
+test('打字时：输入框被重画删掉了（比如回车加完任务），typing 也要去掉，标签栏不能一直藏着', () => {
+  const { root } = setup({ categories: ['工作'], expandedCategory: '工作' });
+  click(root.querySelector('.fab'));
+  typeTaskName(root, '写周报');
+  assert(root.classList.contains('typing'), '先确认在打字');
+
+  press(root.querySelector('.popup-card .add-input'), 'Enter');   // 面板收起，输入框没了
+
+  assertEqual(root.querySelector('.popup-card'), null, '面板收起了');
+  assertEqual(root.classList.contains('typing'), false, '输入框都没了，标签栏要回来');
+});
+
+test('打字时：只在触屏设备上藏起标签栏、+ 按钮和撤销提示，电脑上不藏', async () => {
+  await useAppStyles();
+  setup();
+
+  const sheet = [...document.styleSheets].find((s) => s.ownerNode && s.ownerNode.textContent.includes('--text-input'));
+  const hides = (rule) => rule.style && rule.style.display === 'none' &&
+    ['.typing .tab-bar', '.typing .fab', '.typing .undo-toast'].every((sel) => rule.selectorText.includes(sel));
+
+  const touchRules = [...sheet.cssRules]
+    .filter((rule) => rule.media && rule.media.mediaText.includes('hover: none'))
+    .flatMap((rule) => [...rule.cssRules]);
+  assert(touchRules.some(hides), '触屏设备（hover: none）里要有一条把 .typing 下的标签栏、+、撤销提示都藏起来的规则');
+
+  const topLevel = [...sheet.cssRules].filter((rule) => rule.selectorText);
+  assertEqual(topLevel.some((rule) => rule.selectorText.includes('.typing')), false, '不能写在触屏判断外面，不然电脑上打字时标签栏也会消失');
 });

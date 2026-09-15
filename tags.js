@@ -45,10 +45,14 @@ function isValidTagName(tags, name, exceptId = null) {
 }
 
 // ---- 顶部标签行 ----
-// 返回标签行，长按了某个标签的话，下面再跟一条操作条
-function createTagBar(set) {
+// 返回标签行，长按了某个标签的话，下面再跟一条操作条。
+// menu 传 { key, items } 的话，标签行最右边多一个 ⋯ 菜单（清单页用它放"新建清单"），它不跟着标签横着滑
+function createTagBar(set, menu = null) {
   const box = document.createElement('div');
   box.className = 'tag-header';
+
+  const row = document.createElement('div');
+  row.className = 'tag-row';
 
   const bar = document.createElement('div');
   bar.className = 'tag-bar';
@@ -71,7 +75,9 @@ function createTagBar(set) {
     bar.appendChild(add);
   }
 
-  box.appendChild(bar);
+  row.appendChild(bar);
+  if (menu) row.appendChild(createMenu(menu.key, menu.items));
+  box.appendChild(row);
 
   // 先去标签列表里找：长按的那个标签要是已经被删了，自然找不到，操作条也就不画了。
   // 所以删标签时不用专门回来清 managingTagId

@@ -1,7 +1,7 @@
 // Service Worker：把网页文件缓存到手机里，装成 App 之后离线也能打开。
 //
 // 重要：改完代码要把下面的版本号 +1，否则手机上还会用旧的缓存。
-const VERSION = 'v11';
+const VERSION = 'v13';
 const CACHE_NAME = `todolist-${VERSION}`;
 
 // 需要缓存的文件。只有这几个，附件和待办数据存在浏览器自己的数据库里，不归这里管。

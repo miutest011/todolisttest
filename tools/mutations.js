@@ -282,10 +282,10 @@ const MUTATIONS = [
   },
   {
     group: '清单标签',
-    name: '"已归档"下也显示新建清单',
+    name: '"已归档"下也显示 + 按钮（清单页）',
     file: 'app.js',
-    find: "if (listTagFilter !== 'archived') {\n    view.classList.add('has-fab');",
-    replace: "if (true) {\n    view.classList.add('has-fab');"
+    find: "if (listTagFilter !== 'archived' && categoriesInFilter('all').length > 0) {",
+    replace: "if (categoriesInFilter('all').length > 0) {"
   },
   {
     group: '清单标签',
@@ -421,6 +421,170 @@ const MUTATIONS = [
     file: 'index.html',
     find: "  document.addEventListener('gesturestart', (event) => event.preventDefault());",
     replace: '  // （拦截被删掉了）'
+  },
+
+  // ---------- 清单页：一次展开一个、+ 新建任务、打字时收起底部 ----------
+  {
+    group: '清单页：展开、新建任务、打字',
+    name: '点展开着的清单不会收起来',
+    file: 'app.js',
+    find: "  expandedCategory = expandedCategory === category ? null : category;",
+    replace: "  expandedCategory = category;"
+  },
+  {
+    group: '清单页：展开、新建任务、打字',
+    name: '所有清单都展开（一次展开一个没生效）',
+    file: 'app.js',
+    find: "  return category !== expandedCategory;",
+    replace: "  return false;"
+  },
+  {
+    group: '清单页：展开、新建任务、打字',
+    name: '迁移后不删老的折叠记录',
+    file: 'app.js',
+    find: "  storage.removeItem('collapsed');\n",
+    replace: ""
+  },
+  {
+    group: '清单页：展开、新建任务、打字',
+    name: '迁移时不管老记录，总是展开第一个',
+    file: 'app.js',
+    find: "categories.find((category) => !oldCollapsed.includes(category)) || null",
+    replace: "categories[0] || null"
+  },
+  {
+    group: '清单页：展开、新建任务、打字',
+    name: '记录里的清单不存在了还照样当成展开的',
+    file: 'app.js',
+    find: "    return categories.includes(name) ? name : null;",
+    replace: "    return name;"
+  },
+  {
+    group: '清单页：展开、新建任务、打字',
+    name: '清单改名后就收起来了（没同步展开记录）',
+    file: 'app.js',
+    find: "  if (expandedCategory === oldName) expandedCategory = trimmed;\n",
+    replace: ""
+  },
+  {
+    group: '清单页：展开、新建任务、打字',
+    name: '删掉展开着的清单后，展开记录还指着它',
+    file: 'app.js',
+    find: "  if (expandedCategory === category) expandedCategory = null;\n",
+    replace: ""
+  },
+  {
+    group: '清单页：展开、新建任务、打字',
+    name: '收起来的清单没有放任务的地方（任务拖不进别的清单）',
+    file: 'app.js',
+    find: "    section.appendChild(dropZone);\n",
+    replace: ""
+  },
+  {
+    group: '清单页：展开、新建任务、打字',
+    name: '新建的清单不自动展开',
+    file: 'app.js',
+    find: "  expandedCategory = trimmed;    // 新建的清单直接展开",
+    replace: "  // 新建的清单直接展开"
+  },
+  {
+    group: '清单页：展开、新建任务、打字',
+    name: '新建任务不默认放进展开着的清单',
+    file: 'app.js',
+    find: "  if (shown.includes(expandedCategory)) return expandedCategory;\n",
+    replace: ""
+  },
+  {
+    group: '清单页：展开、新建任务、打字',
+    name: '新建任务后不展开放进去的清单',
+    file: 'app.js',
+    find: "  expandedCategory = draft.category;\n  saveExpandedCategory();\n  if (!categoriesInFilter",
+    replace: "  if (!categoriesInFilter"
+  },
+  {
+    group: '清单页：展开、新建任务、打字',
+    name: '新建任务放进筛选外的清单后不切回"所有"',
+    file: 'app.js',
+    find: "  if (!categoriesInFilter(listTagFilter).includes(draft.category)) {",
+    replace: "  if (false) {"
+  },
+  {
+    group: '清单页：展开、新建任务、打字',
+    name: '新建任务面板不记下打的字（点清单就清空）',
+    file: 'app.js',
+    find: "  input.addEventListener('input', () => {\n    draft.text = input.value;\n  });",
+    replace: ""
+  },
+  {
+    group: '清单页：展开、新建任务、打字',
+    name: '新建任务面板里能选归档的清单',
+    file: 'app.js',
+    find: "  categoriesInFilter('all').forEach((category) => {\n    const option",
+    replace: "  categories.forEach((category) => {\n    const option"
+  },
+  {
+    group: '清单页：展开、新建任务、打字',
+    name: '没有能放任务的清单时也显示 +',
+    file: 'app.js',
+    find: "if (listTagFilter !== 'archived' && categoriesInFilter('all').length > 0) {",
+    replace: "if (listTagFilter !== 'archived') {"
+  },
+  {
+    group: '清单页：展开、新建任务、打字',
+    name: '标签行右边的 ⋯ 里没有"新建清单"',
+    file: 'app.js',
+    find: "    items: [{ text: '新建清单', action: openCategoryDraft }]",
+    replace: "    items: []"
+  },
+  {
+    group: '清单页：展开、新建任务、打字',
+    name: '光标进输入框时不加 typing',
+    file: 'app.js',
+    find: "document.addEventListener('focusin', (event) => syncTypingState(event.target));",
+    replace: ""
+  },
+  {
+    group: '清单页：展开、新建任务、打字',
+    name: '失去焦点时看"焦点现在在哪"而不是"要去哪"（跳输入框时标签栏闪一下）',
+    file: 'app.js',
+    find: "document.addEventListener('focusout', (event) => syncTypingState(event.relatedTarget));",
+    replace: "document.addEventListener('focusout', () => syncTypingState());"
+  },
+  {
+    group: '清单页：展开、新建任务、打字',
+    name: '重画后不再对一遍 typing（输入框没了，标签栏却一直藏着）',
+    file: 'app.js',
+    find: "  // 否则可能出现：输入框早没了，底部标签栏却一直藏着回不来\n  syncTypingState();",
+    replace: "  // 否则可能出现：输入框早没了，底部标签栏却一直藏着回不来"
+  },
+  {
+    group: '清单页：展开、新建任务、打字',
+    name: '打字时藏标签栏的规则没限定在触屏上（电脑上打字标签栏也消失）',
+    file: 'style.css',
+    find: "  @media (hover: none) {\n    .typing .tab-bar,",
+    replace: "  @media all {\n    .typing .tab-bar,"
+  },
+  {
+    group: '清单页：展开、新建任务、打字',
+    name: '打字时没藏 + 按钮',
+    file: 'style.css',
+    find: "    .typing .fab,\n",
+    replace: ""
+  },
+
+  {
+    group: '清单页：展开、新建任务、打字',
+    name: '清单标题的"展开 / 收起"告诉读屏软件时标反了',
+    file: 'app.js',
+    find: "header.setAttribute('aria-expanded', String(!isCollapsed(category)));",
+    replace: "header.setAttribute('aria-expanded', String(isCollapsed(category)));"
+  },
+  {
+    group: '清单页：展开、新建任务、打字',
+    name: '清单标题前面又出现了三角',
+    file: 'app.js',
+    find: "  header.setAttribute('role', 'button');\n",
+    replace: "  header.setAttribute('role', 'button');\n  const arrow = document.createElement('span');\n  arrow.className = 'arrow';\n  arrow.textContent = isCollapsed(category) ? '▸' : '▾';\n  header.appendChild(arrow);\n"
   },
 
   // ---------- 测试工具自己 ----------

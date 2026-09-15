@@ -16,7 +16,10 @@ function setup(data = {}) {
   const storage = createMemoryStorage();
   if (data.categories) storage.setItem('categories', JSON.stringify(data.categories));
   if (data.todos) storage.setItem('todos', JSON.stringify(data.todos));
+  // 老版本存的"哪些清单折叠了"，只有测数据迁移时才会传
   if (data.collapsed) storage.setItem('collapsed', JSON.stringify(data.collapsed));
+  // 展开着的是哪个清单。不传的话，第一次打开默认展开第一个清单
+  if ('expandedCategory' in data) storage.setItem('expandedCategory', JSON.stringify(data.expandedCategory));
   if (data.logItems) storage.setItem('logItems', JSON.stringify(data.logItems));
   if (data.logTags) storage.setItem('logTags', JSON.stringify(data.logTags));
   if (data.listTags) storage.setItem('listTags', JSON.stringify(data.listTags));
@@ -279,12 +282,13 @@ test('重命名清单：里面任务的归属会一起改', () => {
   assertEqual(stored(storage, 'todos')[0].category, '工作安排', '改完要保存');
 });
 
-test('重命名清单：折叠状态记录也会一起改', () => {
-  setup({ categories: ['工作'], collapsed: ['工作'] });
+test('重命名清单：展开着的清单改名后还是展开的', () => {
+  const { storage } = setup({ categories: ['工作', '生活'], expandedCategory: '工作' });
 
   renameCategory('工作', '工作安排');
 
-  assertEqual(collapsed, ['工作安排'], '折叠记录里的名字也要跟着改，否则折叠状态会丢');
+  assertEqual(expandedCategory, '工作安排', '展开记录里的名字也要跟着改，否则一改名它就收起来了');
+  assertEqual(stored(storage, 'expandedCategory'), '工作安排', '要保存');
 });
 
 test('重命名清单：重名或空名字都不生效', () => {
@@ -366,7 +370,7 @@ test('删除清单：用户点确定，清单和里面的任务一起删掉', ()
       { text: '开会', done: true, category: '工作' },
       { text: '买菜', done: false, category: '生活' }
     ],
-    collapsed: ['工作']
+    expandedCategory: '工作'
   });
   useConfirm(() => true);
 
@@ -374,22 +378,23 @@ test('删除清单：用户点确定，清单和里面的任务一起删掉', ()
 
   assertEqual(categories, ['生活'], '清单应该被删掉');
   assertEqual(todos.map((t) => t.text), ['买菜'], '里面的任务（含已完成）都要删掉，别的清单不受影响');
-  assertEqual(collapsed, [], '折叠记录也要清掉');
+  assertEqual(expandedCategory, null, '删的正是展开着的清单，展开记录也要清掉');
   assertEqual(stored(storage, 'todos').length, 1, '删除结果要保存');
 });
 
 
 // ========== 折叠 ==========
 
-test('折叠清单：状态会被保存下来', () => {
-  const { storage } = setup({ categories: ['工作'] });
+test('折叠清单：展开 / 收起会被保存下来', () => {
+  const { storage } = setup({ categories: ['工作'], expandedCategory: '工作' });
 
   toggleCollapse('工作');
-  assertEqual(collapsed, ['工作'], '应该记录为已折叠');
-  assertEqual(stored(storage, 'collapsed'), ['工作'], '折叠状态要保存');
+  assertEqual(expandedCategory, null, '点展开着的清单，收起来');
+  assertEqual(stored(storage, 'expandedCategory'), null, '要保存');
 
   toggleCollapse('工作');
-  assertEqual(collapsed, [], '再点一次应该展开');
+  assertEqual(expandedCategory, '工作', '再点一次展开');
+  assertEqual(stored(storage, 'expandedCategory'), '工作', '要保存');
 });
 
 
@@ -443,21 +448,29 @@ test('界面：任务按清单分组显示', () => {
     ]
   });
 
-  const sections = [...root.querySelectorAll('.category')];
-  assertEqual(sections.length, 2, '应该有两个清单区块');
-  assertEqual(textsOf(sections[0], '.todo-text'), ['写周报'], '第一个区块里应该只有工作的任务');
-  assertEqual(textsOf(sections[1], '.todo-text'), ['买菜'], '第二个区块里应该只有生活的任务');
+  const sections = () => [...root.querySelectorAll('.category')];
+  assertEqual(sections().length, 2, '应该有两个清单区块');
+  assertEqual(textsOf(sections()[0], '.todo-text'), ['写周报'], '第一个区块里应该只有工作的任务');
+
+  // 一次只展开一个清单，展开生活再看它的
+  toggleCollapse('生活');
+  assertEqual(textsOf(sections()[1], '.todo-text'), ['买菜'], '第二个区块里应该只有生活的任务');
 });
 
-test('界面：折叠后任务不显示，箭头变成 ▸', () => {
+test('界面：收起的清单不显示任务；标题前没有三角，收起状态悄悄告诉读屏软件', () => {
   const { root } = setup({
     categories: ['工作'],
     todos: [{ text: '写周报', done: false, category: '工作' }],
-    collapsed: ['工作']
+    expandedCategory: null
   });
 
-  assertEqual(root.querySelectorAll('.todo-item').length, 0, '折叠时不应该画出任务');
-  assertEqual(root.querySelector('.arrow').textContent, '▸', '箭头应该是收起状态');
+  const header = root.querySelector('.category-header');
+  assertEqual(root.querySelectorAll('.todo-item').length, 0, '收起时不应该画出任务');
+  assertEqual(header.querySelector('.arrow'), null, '标题前不放三角（用户觉得不需要、也不好看）');
+  assertEqual(header.getAttribute('aria-expanded'), 'false', '看不到三角了，读屏软件要靠这个知道它收着');
+
+  click(header);
+  assertEqual(root.querySelector('.category-header').getAttribute('aria-expanded'), 'true', '展开后跟着变');
 });
 
 test('界面：已完成的收进折叠分组，标题只数未完成的', () => {
@@ -558,7 +571,7 @@ test('交互：点清单名字也是折叠，不会误触发改名', () => {
 
   click(root.querySelector('.category-name'));
 
-  assertEqual(collapsed, ['工作'], '点名字应该折叠');
+  assertEqual(expandedCategory, null, '点名字应该收起（第一次打开时第一个清单是展开的）');
   assertEqual(root.querySelector('.edit-input'), null, '不该进入改名状态');
 });
 
@@ -567,7 +580,7 @@ test('交互：点标题栏空白处折叠', () => {
 
   click(root.querySelector('.category-header'));
 
-  assertEqual(collapsed, ['工作'], '应该折叠起来');
+  assertEqual(expandedCategory, null, '应该收起来');
 });
 
 test('交互：清单改名仍然可以从 ⋯ 菜单进入', () => {
@@ -1156,14 +1169,15 @@ test('置顶：只在自己所在的清单里排前面，不会跑到别的清�
       { text: '写周报', done: false, category: '工作' },
       { text: '买菜', done: false, category: '生活' },
       { text: '做饭', done: false, category: '生活' }
-    ]
+    ],
+    expandedCategory: '生活'
   });
 
   togglePin(2);   // 把"做饭"置顶
 
-  const sections = [...root.querySelectorAll('.category')];
-  assertEqual(textsOf(sections[0], '.todo-text'), ['写周报'], '工作清单不该受影响');
-  assertEqual(textsOf(sections[1], '.todo-text'), ['做饭', '买菜'], '置顶只在生活清单内生效');
+  assertEqual(textsOf(root.querySelectorAll('.category')[1], '.todo-text'), ['做饭', '买菜'], '置顶只在生活清单内生效');
+  toggleCollapse('工作');
+  assertEqual(textsOf(root.querySelectorAll('.category')[0], '.todo-text'), ['写周报'], '工作清单不该受影响');
 });
 
 test('置顶：点列表里的置顶按钮就能切换', () => {
@@ -1575,13 +1589,14 @@ test('拖拽排序：可以把任务拖到别的清单里的指定位置', () =>
       { text: '写周报', done: false, category: '工作' },
       { text: '买菜', done: false, category: '生活' },
       { text: '做饭', done: false, category: '生活' }
-    ]
+    ],
+    expandedCategory: '生活'
   });
 
   moveTodoToPosition(0, '生活', 1);   // 把"写周报"拖到生活清单的中间
 
   const sections = [...root.querySelectorAll('.category')];
-  assertEqual(textsOf(sections[0], '.todo-text'), [], '工作清单应该空了');
+  assertEqual(todos.filter((t) => t.category === '工作').length, 0, '工作清单应该空了');
   assertEqual(textsOf(sections[1], '.todo-text'), ['买菜', '写周报', '做饭'], '应该插在买菜和做饭之间');
   assertEqual(todos.find((t) => t.text === '写周报').category, '生活', '所属清单要跟着改');
 });
@@ -1589,7 +1604,8 @@ test('拖拽排序：可以把任务拖到别的清单里的指定位置', () =>
 test('拖拽排序：可以拖进空清单', () => {
   const { root } = setup({
     categories: ['工作', '生活'],
-    todos: [{ text: '写周报', done: false, category: '工作' }]
+    todos: [{ text: '写周报', done: false, category: '工作' }],
+    expandedCategory: '生活'
   });
 
   moveTodoToPosition(0, '生活', 0);
@@ -1781,7 +1797,7 @@ test('拖拽：拖动清单不会顺带把它折叠起来', () => {
   drag(headers[0], headers[1].getBoundingClientRect().bottom);
   headers[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
-  assertEqual(collapsed, [], '拖动不该触发折叠');
+  assertEqual(expandedCategory, '工作', '拖动不该触发展开 / 收起（第一个清单一开始是展开的）');
   assertEqual(categories, ['生活', '工作'], '顺序应该换过来了');
 });
 

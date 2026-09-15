@@ -206,7 +206,7 @@ test('清单页顶部：所有 / 自己的标签 / 已归档 / + 新增，默认
   assertEqual(visibleCategoryNames(root), ['工作', '生活', '学习'], '归档的不在"所有"里');
 });
 
-test('清单页顶部：点标签只看这个标签下的清单；"已归档"下没有新建清单的入口', () => {
+test('清单页顶部：点标签只看这个标签下的清单；"已归档"下没有 + 按钮', () => {
   const { root } = listTagSetup();
 
   click(tagChip(root, '公司'));
@@ -215,7 +215,7 @@ test('清单页顶部：点标签只看这个标签下的清单；"已归档"下
 
   click(tagChip(root, '已归档'));
   assertEqual(visibleCategoryNames(root), ['旧项目'], '只剩归档的');
-  assertEqual(root.querySelector('.fab'), null, '新建的清单不是归档状态，建完会立刻消失，所以不给入口');
+  assertEqual(root.querySelector('.fab'), null, '任务只能放进没归档的清单，建完不会出现在这一页，所以不给入口');
 });
 
 test('清单页顶部：用"+ 新增"建标签，长按能改名和删除（共用组件在清单页也好用）', async () => {
@@ -241,9 +241,10 @@ test('清单页顶部：用"+ 新增"建标签，长按能改名和删除（共�
   assertEqual(tagChip(root, '兼职'), undefined, '删除成功');
 });
 
-// 点右下角的 +，打开新建清单的面板
+// 点标签行右边的 ⋯ → 新建清单，打开新建清单的面板（右下角的 + 是新建任务）
 function openCategoryPanel(root) {
-  click(root.querySelector('.fab'));
+  click(root.querySelector('.tag-row .menu-btn'));
+  click(menuItemNamed(root, '新建清单'));
   return root.querySelector('.popup-card');
 }
 
@@ -455,7 +456,7 @@ test('任务的"移动到"不列出归档的清单', () => {
   assertEqual(menu.includes('旧项目'), false, '归档了的清单不该往里放东西');
 });
 
-test('清单页：各种"没有东西"时的提示；一个清单都没有时告诉用户点右下角的 +', () => {
+test('清单页：各种"没有东西"时的提示；一个清单都没有时告诉用户点右上角的 ⋯', () => {
   const { root } = setup({ categories: ['旧项目'], listTags: [listTag('公司')], categoryMeta: { '旧项目': { tagId: null, archived: true } } });
 
   assert(root.querySelector('.empty-state').textContent.includes('已归档'), '全归档了，告诉用户去哪找');
@@ -469,7 +470,8 @@ test('清单页：各种"没有东西"时的提示；一个清单都没有时告
   assert(root.querySelector('.empty-state').textContent.includes('⋯'), '说明从哪里归档');
 
   click(tagChip(root, '所有'));
-  assert(root.querySelector('.empty-state').textContent.includes('右下角'), '新建按钮不在列表里了，要告诉用户去哪点');
+  assert(root.querySelector('.empty-state').textContent.includes('右上角'), '新建清单在右上角的 ⋯ 里，要告诉用户去哪点');
+  assertEqual(root.querySelector('.fab'), null, '一个清单都没有，新建任务也没地方放，不显示 +');
 });
 
 test('两页的筛选互不影响：打卡页选了标签，清单页还是"所有"', () => {

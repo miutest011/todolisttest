@@ -95,7 +95,9 @@ const DEFAULT_CATEGORIES = ['工作', '生活'];
 // ---- 所有会变化的状态都放在这里，界面完全由它们决定 ----
 let categories = [];        // 清单名字的数组
 let todos = [];             // 每一项是 { text, done, category }
-let collapsed = [];         // 当前被折叠起来的清单名字
+// 一次只展开一个清单：点开一个，其它的自动收起。记的是展开着的那个清单的名字，null = 全都收着。
+// 清单多的时候页面短；右下角 + 新建任务时，也就知道默认该放进哪个清单
+let expandedCategory = null;
 let listTags = [];          // 清单页自己的标签 [{ id, name }]，和打卡的标签互不相干
 // 每个清单放在哪个标签下、有没有归档：{ '工作': { tagId: 'ltag-…', archived: false } }
 // 标签像文件夹，一个清单最多放在一个标签下。归档了的清单不在任何标签下。
@@ -104,6 +106,7 @@ let listTags = [];          // 清单页自己的标签 [{ id, name }]，和打�
 let categoryMeta = {};
 let addingTaskIn = null;    // 正在哪个清单里输入新任务
 let categoryDraft = null;   // 正在新建的清单 { name, tagId }，null = 新建面板没打开
+let taskDraft = null;       // 正在新建的任务 { text, category }，null = 新建任务面板没打开
 let editingTaskIndex = null;// 正在重命名的任务（它在 todos 里的位置）
 let editingCategory = null; // 正在重命名的清单名字
 let openMenuKey = null;     // 哪个三点菜单是展开的，例如 'task-2'、'category-工作'
@@ -119,6 +122,7 @@ let listTagFilter = 'all';  // 清单页顶部选中了哪个：'all'（所有�
 function resetViewState() {
   addingTaskIn = null;
   categoryDraft = null;
+  taskDraft = null;
   editingTaskIndex = null;
   editingCategory = null;
   openMenuKey = null;
@@ -139,7 +143,7 @@ function initApp(element) {
   resetViewState();
   categories = loadCategories();
   todos = loadTodos();
-  collapsed = loadCollapsed();
+  expandedCategory = loadExpandedCategory();   // 要对照清单列表，所以排在读清单之后
   listTags = loadListTags();   // 先读标签：读清单归属时要对照它，把已经不存在的标签去掉
   categoryMeta = loadCategoryMeta();
   logTags = loadLogTags();     // 同理，打卡也是先读标签再读项目
@@ -197,13 +201,30 @@ function saveTodos() {
   storage.setItem('todos', JSON.stringify(todos));
 }
 
-function loadCollapsed() {
-  const saved = storage.getItem('collapsed');
-  return saved ? JSON.parse(saved) : [];
+// 展开着的是哪个清单。
+// 老版本记的是"哪些清单折叠了"（可以好几个同时展开），第一次读的时候换算过来：
+// 展开原来第一个没折叠的清单，然后把老记录删掉 —— 两处都记展开状态，早晚会对不上
+function loadExpandedCategory() {
+  const saved = storage.getItem('expandedCategory');
+  if (saved !== null) {
+    const name = JSON.parse(saved);
+    return categories.includes(name) ? name : null;
+  }
+
+  const old = storage.getItem('collapsed');
+  const oldCollapsed = old ? JSON.parse(old) : [];
+  const name = categories.find((category) => !oldCollapsed.includes(category)) || null;
+  storage.removeItem('collapsed');
+  storage.setItem('expandedCategory', JSON.stringify(name));
+  return name;
 }
 
-function saveCollapsed() {
-  storage.setItem('collapsed', JSON.stringify(collapsed));
+function saveExpandedCategory() {
+  storage.setItem('expandedCategory', JSON.stringify(expandedCategory));
+}
+
+function isCollapsed(category) {
+  return category !== expandedCategory;
 }
 
 function loadListTags() {
@@ -307,7 +328,30 @@ function render() {
       focusEl.select();
     }
   }
+
+  // 重画时旧输入框被删掉，浏览器不一定会为它发"失去焦点"。画完按实际情况再对一遍，
+  // 否则可能出现：输入框早没了，底部标签栏却一直藏着回不来
+  syncTypingState();
 }
+
+// ---- 打字时收起底部的标签栏和 + 按钮 ----
+// iPhone 弹出键盘时，会把贴在屏幕底部的东西一起顶到键盘上面，挡住正在输入的地方。
+// 所以光标在输入框里的时候，给整个应用加上 typing，由 CSS 把它们藏起来（只在触屏设备上，见 style.css）
+function isTextField(element) {
+  if (!element || !['INPUT', 'TEXTAREA', 'SELECT'].includes(element.tagName)) return false;
+  // 选附件用的是个藏起来的文件输入框，点它弹的是选文件，不是键盘
+  return element.type !== 'file';
+}
+
+// focused 是"焦点现在在谁身上"，不传就看当前的
+function syncTypingState(focused = document.activeElement) {
+  if (!appEl) return;
+  appEl.classList.toggle('typing', isTextField(focused) && appEl.contains(focused));
+}
+
+document.addEventListener('focusin', (event) => syncTypingState(event.target));
+// 失去焦点时看焦点要去哪：从一个输入框跳到另一个输入框，键盘不会收起，标签栏也就先别放出来
+document.addEventListener('focusout', (event) => syncTypingState(event.relatedTarget));
 
 // ---- 拖拽排序 ----
 // 用指针事件（pointerdown / pointermove / pointerup）自己实现，
@@ -478,7 +522,7 @@ function findTaskContainerAt(x, y) {
     const rect = section.getBoundingClientRect();
     return y >= rect.top && y <= rect.bottom;
   });
-  // 折叠起来的清单没有任务列表，不能往里放
+  // 展开的清单拿到的是任务列表；收起来的清单拿到的是那个看不见的空列表，拖进去就放进这个清单
   return hit ? hit.querySelector('ul') : null;
 }
 
@@ -549,7 +593,11 @@ function createTasksView() {
   }
 
   // 顶部标签行（和打卡页共用，在 tags.js 里）
-  view.appendChild(createTagBar(listTagSet));
+  // 标签行右边放一个 ⋯："新建清单"一年也用不了几次，不值得占着右下角那个最显眼的位置
+  view.appendChild(createTagBar(listTagSet, {
+    key: 'page-lists',
+    items: [{ text: '新建清单', action: openCategoryDraft }]
+  }));
 
   const shown = categoriesInFilter(listTagFilter);
   const message = listEmptyMessage(shown);
@@ -568,10 +616,15 @@ function createTasksView() {
   });
 
   view.appendChild(categoryList);
-  // "已归档"下面不给新建入口：新建的清单不是归档状态，建完会立刻从这一页消失
-  if (listTagFilter !== 'archived') {
+  // 右下角的 + 是"新建任务"：这一页上最常做的事。
+  // "已归档"下面不给：任务只能放进没归档的清单，建完不会出现在这一页。
+  // 一个没归档的清单都没有时也不给：任务总得放进某个清单里
+  if (listTagFilter !== 'archived' && categoriesInFilter('all').length > 0) {
     view.classList.add('has-fab');    // 列表底部多留点空，别让最后一个清单的 ⋯ 被 + 按钮挡住
-    view.appendChild(createFab('新建清单', openCategoryDraft));
+    view.appendChild(createFab('新建任务', openTaskDraft));
+  }
+  if (taskDraft !== null) {
+    view.appendChild(createTaskDraftPanel());
   }
   if (categoryDraft !== null) {
     view.appendChild(createCategoryDraftPanel());
@@ -588,9 +641,9 @@ function listEmptyMessage(shown) {
   if (listTagFilter === 'all') {
     return categories.length > 0
       ? '没有正在用的清单，归档了的在「已归档」里。'
-      : '还没有清单。点右下角的 + 新建一个。';
+      : '还没有清单。点右上角的 ⋯ 新建一个。';
   }
-  return '这个标签下还没有清单。点右下角的 + 新建，或者在清单的 ⋯ 菜单里放进来。';
+  return '这个标签下还没有清单。点右上角的 ⋯ 新建，或者在清单的 ⋯ 菜单里放进来。';
 }
 
 // ---- 新建清单 ----
@@ -669,6 +722,96 @@ function submitCategoryDraft() {
 function cancelCategoryDraft() {
   categoryDraft = null;
   addingTagIn = null;
+  render();
+}
+
+// ---- 新建任务（右下角的 +）----
+// 默认放进展开着的那个清单 —— 你正在看的就是它。
+// 它不在当前页面上（比如被筛选掉了、或者全都收着）时，放进页面上的第一个清单
+function defaultTaskCategory() {
+  const shown = categoriesInFilter(listTagFilter);
+  if (shown.includes(expandedCategory)) return expandedCategory;
+  if (shown.length > 0) return shown[0];
+  return categoriesInFilter('all')[0] || null;
+}
+
+function openTaskDraft() {
+  taskDraft = { text: '', category: defaultTaskCategory() };
+  render();
+}
+
+// 面板里：任务名 + 放进哪个清单（只能选一个）
+function createTaskDraftPanel() {
+  const draft = taskDraft;
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'add-input';
+  input.placeholder = '任务名称';
+  // 点清单会让页面重画、输入框被重新造一个，所以边打字边记下来，不然一点清单字就没了
+  input.value = draft.text;
+  input.addEventListener('input', () => {
+    draft.text = input.value;
+  });
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      draft.text = input.value;
+      submitTaskDraft();
+    } else if (event.key === 'Escape') {
+      cancelTaskDraft();
+    }
+  });
+
+  const label = document.createElement('div');
+  label.className = 'popup-label';
+  label.textContent = '放进清单';
+
+  // 长得和选标签的那排一样。归档了的清单不列：暂时不用的地方，不该往里放东西
+  const picker = document.createElement('div');
+  picker.className = 'tag-picker';
+  categoriesInFilter('all').forEach((category) => {
+    const option = document.createElement('button');
+    option.className = 'tag-option list-option';
+    option.textContent = category;
+    if (category === draft.category) option.classList.add('selected');
+    option.addEventListener('click', () => {
+      draft.category = category;
+      render();
+    });
+    picker.appendChild(option);
+  });
+
+  return createPopupCard({
+    title: '新建任务',
+    body: [input, label, picker],
+    submitText: '添加',
+    onSubmit: submitTaskDraft,
+    onCancel: cancelTaskDraft
+  });
+}
+
+function submitTaskDraft() {
+  const draft = taskDraft;
+  taskDraft = null;
+
+  // 名字空着、或者选的清单已经不能用了（被删、被归档），什么都不加，面板收起来
+  const usable = categoriesInFilter('all').includes(draft.category);
+  if (draft.text.trim() === '' || !usable) {
+    render();
+    return;
+  }
+
+  // 加完要让人看到它：展开放进去的那个清单；它不在当前筛选里的话，切回"所有"
+  expandedCategory = draft.category;
+  saveExpandedCategory();
+  if (!categoriesInFilter(listTagFilter).includes(draft.category)) {
+    listTagFilter = 'all';
+  }
+  addTodo(draft.category, draft.text);
+}
+
+function cancelTaskDraft() {
+  taskDraft = null;
   render();
 }
 
@@ -771,8 +914,8 @@ function createCategorySection(category) {
   section.dataset.category = category;    // 拖拽时靠它认出这是哪个清单
   section.appendChild(createCategoryHeader(category, section));
 
-  // 折叠状态下就不画下面的内容了
-  if (!collapsed.includes(category)) {
+  // 收起来的清单不画下面的内容
+  if (!isCollapsed(category)) {
     // 先挑出这个清单里的任务，记住它们在 todos 里的真实位置
     const items = [];
     todos.forEach((todo, index) => {
@@ -797,6 +940,13 @@ function createCategorySection(category) {
       items.filter((item) => item.todo.status === 'done')));
     section.appendChild(createSubGroup(category, 'abandoned', '已放弃',
       items.filter((item) => item.todo.status === 'abandoned')));
+  } else {
+    // 收起来的清单也放一个空的任务列表，平时看不见。
+    // 一次只展开一个清单，别的清单全都收着 —— 没有它的话，任务就再也拖不进别的清单了。
+    // 拖着任务经过这个清单时，那一行占位会落进这里（正好显示"会放到这儿"），松手就放进这个清单的最前面
+    const dropZone = document.createElement('ul');
+    dropZone.className = 'collapsed-drop';
+    section.appendChild(dropZone);
   }
 
   return section;
@@ -865,10 +1015,10 @@ function createCategoryHeader(category, section) {
     section
   );
 
-  const arrow = document.createElement('span');
-  arrow.className = 'arrow';
-  arrow.textContent = collapsed.includes(category) ? '▸' : '▾';
-  header.appendChild(arrow);
+  // 清单标题前面不放三角：展开着的清单下面就是它的任务，一眼就看得出，三角只是多一个不好看的符号。
+  // 但读屏软件"看"不到下面有没有东西，所以用 aria-expanded 悄悄告诉它（界面上看不见）
+  header.setAttribute('role', 'button');
+  header.setAttribute('aria-expanded', String(!isCollapsed(category)));
 
   if (editingCategory === category) {
     header.appendChild(createRenameInput(
@@ -1676,8 +1826,10 @@ function addCategory(name, tagId = null) {
   // 万一有个同名的老记录（理论上删清单时已经清掉了），新清单也不该继承它
   delete categoryMeta[trimmed];
   if (findListTag(tagId)) categoryMeta[trimmed] = { tagId: tagId, archived: false };
+  expandedCategory = trimmed;    // 新建的清单直接展开，马上就能往里加任务
 
   saveCategories();
+  saveExpandedCategory();
   saveCategoryMeta();
   render();
   return true;
@@ -1809,13 +1961,10 @@ function mergeVisibleCategoryOrder(visibleNames) {
   return categories.map((category) => (visible.has(category) ? visibleNames[next++] : category));
 }
 
+// 点清单标题：展开它，其它的自动收起；点的正是展开着的那个，就把它收起来
 function toggleCollapse(category) {
-  if (collapsed.includes(category)) {
-    collapsed = collapsed.filter((name) => name !== category);
-  } else {
-    collapsed.push(category);
-  }
-  saveCollapsed();
+  expandedCategory = expandedCategory === category ? null : category;
+  saveExpandedCategory();
   render();
 }
 
@@ -2071,7 +2220,7 @@ function renameCategory(oldName, newName) {
       todo.category = trimmed;
     }
   });
-  collapsed = collapsed.map((name) => (name === oldName ? trimmed : name));
+  if (expandedCategory === oldName) expandedCategory = trimmed;
   // 放在哪个标签下、有没有归档，也是按名字记的
   if (categoryMeta[oldName]) {
     categoryMeta[trimmed] = categoryMeta[oldName];
@@ -2080,7 +2229,7 @@ function renameCategory(oldName, newName) {
 
   saveCategories();
   saveTodos();
-  saveCollapsed();
+  saveExpandedCategory();
   saveCategoryMeta();
   render();
   return true;
@@ -2118,7 +2267,7 @@ function deleteCategory(category) {
 
   categories = categories.filter((name) => name !== category);
   todos = todos.filter((todo) => todo.category !== category);
-  collapsed = collapsed.filter((name) => name !== category);
+  if (expandedCategory === category) expandedCategory = null;
   delete categoryMeta[category];  // 不删的话，以后再建个同名清单会莫名其妙出现在某个标签下
   deleteAttachmentsOf(removed);   // 连带删掉这些任务的附件文件
   if (addingTaskIn === category) addingTaskIn = null;
@@ -2126,7 +2275,7 @@ function deleteCategory(category) {
 
   saveCategories();
   saveTodos();
-  saveCollapsed();
+  saveExpandedCategory();
   saveCategoryMeta();
   render();
   return true;

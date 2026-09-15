@@ -535,10 +535,19 @@
   /* ---- 标签（打卡页和清单页共用，界面在 tags.js 里）---- */
 
   /* 顶部那一行：所有 | 用户的标签… | 已归档 | + 新增。放不下就横着滑 */
-  .tag-bar {
+  /* 标签行（会横着滑）+ 最右边可能有的 ⋯ 菜单（不跟着滑） */
+  .tag-row {
     display: flex;
+    align-items: center;
     gap: var(--space-2);
     margin-bottom: var(--space-4);
+  }
+
+  .tag-bar {
+    flex: 1;
+    min-width: 0;                      /* 不写这个，标签多了会把 ⋯ 挤出屏幕，而不是自己横着滑 */
+    display: flex;
+    gap: var(--space-2);
     overflow-x: auto;
     scrollbar-width: none;             /* 滑动条藏起来，手机上本来也看不到 */
   }
@@ -853,6 +862,18 @@
      140px = 按钮的 bottom 72px + 按钮高 56px + 12px 间隔 */
   .has-fab ~ .undo-toast {
     bottom: calc(140px + env(safe-area-inset-bottom));
+  }
+
+  /* 打字的时候（光标在输入框里）把底部的标签栏、+ 按钮、撤销提示收起来。
+     iPhone 弹出键盘时，会把贴在屏幕底部的东西顶到键盘上面，挡住正在输入的地方。
+     只在触屏设备上这样做：电脑没有弹出键盘，打字时标签栏突然消失反而奇怪。
+     typing 这个 class 由 app.js 的 syncTypingState() 加上和去掉 */
+  @media (hover: none) {
+    .typing .tab-bar,
+    .typing .fab,
+    .typing .undo-toast {
+      display: none;
+    }
   }
 
   /* ---- 新建面板：暗色遮罩 + 靠上方的卡片 ---- */
