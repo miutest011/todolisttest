@@ -2,8 +2,10 @@
 <html lang="zh">
 <head>
 <meta charset="UTF-8">
-<!-- 手机上按屏幕真实宽度渲染。没有这一行，iPhone 会当成电脑屏幕、把整页缩小 -->
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- 手机上按屏幕真实宽度渲染。没有这一行，iPhone 会当成电脑屏幕、把整页缩小。
+     maximum-scale=1 和 user-scalable=no 是不让页面缩放：这是个 App，页面和屏幕一样大才对。
+     另外两种"不小心放大"在别处处理：输入框字号（style.css 的 --text-input）、连点两下（style.css 的 touch-action） -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>我的待办清单</title>
 
 <!-- PWA：让它能被"添加到主屏幕"，装出来像个 App -->
@@ -35,6 +37,11 @@
 
   // 启动提醒检查（每分钟看一遍有没有任务到点了）
   startReminderTimer();
+
+  // 拦住 iPhone 上的双指缩放。
+  // 苹果为了照顾视力不好的用户，Safari 会无视上面 viewport 里的 user-scalable=no，
+  // 只能靠拦截它自己的"手势开始"事件。这个事件只有 iPhone / iPad 的 Safari 有，别的浏览器上这几行什么都不做
+  document.addEventListener('gesturestart', (event) => event.preventDefault());
 
   // 注册 Service Worker，让网页能离线打开。
   // 浏览器只在 https 或者 localhost 下才允许注册，所以用 http 的局域网地址访问时

@@ -20,10 +20,10 @@ test('变异工具：测试页里的路径换成相对项目根目录的路径',
   assertEqual(scriptToProjectPath('test-runner.js'), 'tools/test-runner.js', '同一层的在 tools/ 里');
 });
 
-test('变异工具：能判断某个文件有没有被测试页加载', () => {
-  assertEqual(isLoadedByTestPage(SAMPLE_TEST_HTML, 'logs.js'), true, 'logs.js 加载了');
-  assertEqual(isLoadedByTestPage(SAMPLE_TEST_HTML, 'tools/test-runner.js'), true, 'tools 里的也认得');
-  assertEqual(isLoadedByTestPage(SAMPLE_TEST_HTML, 'tags.js'), false, '没加载的要认出来，不然改了也白改，还会误报"没抓到"');
+test('变异工具：能分清哪些文件是测试页加载的脚本', () => {
+  assertEqual(isTestScript(SAMPLE_TEST_HTML, 'logs.js'), true, 'logs.js 是脚本');
+  assertEqual(isTestScript(SAMPLE_TEST_HTML, 'tools/test-runner.js'), true, 'tools 里的也认得');
+  assertEqual(isTestScript(SAMPLE_TEST_HTML, 'style.css'), false, 'style.css 不是脚本，要走"拦截 fetch"那条路');
 });
 
 test('变异工具：find 正好出现一次才改；零次或多次都不改', () => {
@@ -55,28 +55,66 @@ test('变异工具：生成的脚本地址被加上 ?t=时间戳 之后，代码
   assert(compileError === null, '多出来的 ?t= 要落进注释里，否则每条变异都会变成"语法错误"，实际：' + compileError);
 });
 
-test('变异工具：拼测试页时只换掉被改的那个脚本，其它照旧', () => {
-  const page = buildMutantPage(SAMPLE_TEST_HTML, 'http://localhost:4173/tools/', 'logs.js', 'data:改过的');
+// 从拼好的测试页里读出脚本列表（拼的时候用的是双引号）
+function mutantScripts(page) {
+  const match = page.match(/const SCRIPTS = (\[[^\]]*\]);/);
+  return match ? JSON.parse(match[1]) : null;
+}
 
-  assertEqual(
-    parseTestScripts(page.replace(/"/g, "'")),
-    ['../app.js', 'data:改过的', 'test-runner.js', 'tests.js'],
-    '只有 logs.js 换成了改过的代码'
-  );
+test('变异工具：改脚本时，只换掉被改的那个，其它照旧', () => {
+  const page = buildMutantPage(SAMPLE_TEST_HTML, 'http://localhost:4173/tools/', 'logs.js', 'window.mutated = 1;');
+  const list = mutantScripts(page);
+
+  assertEqual([list[0], list[2], list[3]], ['../app.js', 'test-runner.js', 'tests.js'], '别的脚本不动');
+  assert(list[1].startsWith('data:text/javascript'), 'logs.js 换成了改过的代码，实际：' + list[1].slice(0, 40));
+  assert(decodeURIComponent(list[1]).includes('window.mutated = 1;'), '换进去的就是改过的那份');
   assert(page.includes('<base href="http://localhost:4173/tools/">'), '要有 <base>，不然其它脚本的相对路径找不到');
   assert(page.includes('__syntaxErrors'), '要记下加载时的语法错误');
+  assertEqual(page.includes('mutantPath'), false, '改脚本时用不着拦截 fetch');
 });
 
-test('变异工具：对照组（什么都不改）的脚本列表和原来一模一样', () => {
+test('变异工具：对照组（什么都不改）一个脚本都不换，也不拦截 fetch', () => {
   const page = buildMutantPage(SAMPLE_TEST_HTML, 'http://localhost:4173/tools/', null, null);
 
-  assertEqual(parseTestScripts(page.replace(/"/g, "'")), parseTestScripts(SAMPLE_TEST_HTML), '一个都不能换');
+  assertEqual(mutantScripts(page), parseTestScripts(SAMPLE_TEST_HTML), '一个都不能换');
+  assertEqual(page.includes('mutantPath'), false, '也不装拦截器');
 });
 
-test('变异工具：脚本地址里有 $ 也不会把测试页拼坏', () => {
-  const page = buildMutantPage(SAMPLE_TEST_HTML, 'http://localhost:4173/tools/', 'app.js', "data:$&$'");
+test('变异工具：改的内容里有 $ 也不会把测试页拼坏', () => {
+  const page = buildMutantPage(SAMPLE_TEST_HTML, 'http://localhost:4173/tools/', 'style.css', "a$&b$'c");
 
-  assert(page.includes('"data:$&$\'"'), '地址要原样放进去');
+  assert(page.includes(JSON.stringify("a$&b$'c")), '内容要原样放进去，$& 不能被展开');
+});
+
+test('变异工具：改的不是脚本（比如 style.css）时，测试 fetch 它拿到的是改过的内容', async () => {
+  const mutated = 'body { color: red; }</script><script>window.__escaped = true;</script>';
+  // 一个极小的"测试页"：只 fetch 一下被改的文件和一个没被改的文件，把拿到的内容记下来
+  const tinyPage =
+    '<html><head></head><body><script>const SCRIPTS = [];</script><script>' +
+    'Promise.all([fetch("../style.css").then(function (r) { return r.text(); }),' +
+    '             fetch("../index.html").then(function (r) { return r.text(); })])' +
+    '  .then(function (texts) { window.__got = texts; });' +
+    '</script></body></html>';
+  // 测试页所在的 tools/ 目录。
+  // 用 document.baseURI 而不是 location.href：这条测试在 mutate.html 的隐藏测试页里跑时，
+  // location.href 是 about:srcdoc，算不出目录（真踩过：自检因此没通过）；baseURI 会认 <base>
+  const baseHref = new URL('.', document.baseURI).href;
+
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = 'position:fixed;left:-10000px;width:10px;height:10px;';
+  document.body.appendChild(iframe);
+  onCleanup(() => iframe.remove());
+  iframe.srcdoc = buildMutantPage(tinyPage, baseHref, 'style.css', mutated);
+
+  for (let i = 0; i < 50 && !(iframe.contentWindow && iframe.contentWindow.__got); i++) {
+    await sleep(50);
+  }
+  const got = iframe.contentWindow.__got;
+
+  assert(got, '小测试页没跑完');
+  assertEqual(got[0], mutated, 'fetch 被改的文件，要拿到改过的内容（一个字都不差）');
+  assert(got[1].includes('<meta name="viewport"'), 'fetch 别的文件，照常拿到真实内容');
+  assertEqual(iframe.contentWindow.__escaped, undefined, '内容里的 </script> 不能把拦截器那段脚本截断、让后面的内容被当成代码跑');
 });
 
 test('变异工具：结局判断', () => {
@@ -93,15 +131,12 @@ test('变异工具：结局判断', () => {
   assertEqual(as({}), 'survived', '全绿 → 没抓到');
 });
 
-test('变异清单：每条都填全了，文件确实被测试页加载，改动确实有改变', async () => {
+test('变异清单：每条都填全了，文件确实存在，改动确实有改变', async () => {
   if (location.protocol === 'file:') {
     skip('要读项目里的文件，需要用 python3 tools/dev-server.py 打开测试页');
   }
 
-  const [listText, testHtml] = await Promise.all([
-    fetch('mutations.js?t=' + Date.now()).then((response) => response.text()),
-    fetch('test.html?t=' + Date.now()).then((response) => response.text())
-  ]);
+  const listText = await fetch('mutations.js?t=' + Date.now()).then((response) => response.text());
   // 清单文件只是定义了一个 MUTATIONS 数组，拿出来看看
   const mutations = new Function(listText + '\nreturn MUTATIONS;')();
 
@@ -111,8 +146,12 @@ test('变异清单：每条都填全了，文件确实被测试页加载，改�
     assert(m.group && m.name && m.file && typeof m.find === 'string' && typeof m.replace === 'string', label + '缺字段');
     assert(m.find !== '', label + '的 find 是空的');
     assert(m.find !== m.replace, label + '的 find 和 replace 一样，等于没改');
-    assert(isLoadedByTestPage(testHtml, m.file), `${label}改的是 ${m.file}，但测试页没加载它`);
   });
+
+  // 文件路径写错的话，mutate.html 会读不到文件
+  const files = [...new Set(mutations.map((m) => m.file))];
+  const statuses = await Promise.all(files.map((file) => fetch('../' + file + '?t=' + Date.now()).then((r) => r.status)));
+  files.forEach((file, index) => assertEqual(statuses[index], 200, `清单里的文件 ${file} 读不到`));
 
   const names = mutations.map((m) => m.name);
   assertEqual(names.length, new Set(names).size, '名字不能重复，不然结果对不上是哪一条');

@@ -45,9 +45,12 @@
     --text-xs:   12px;   /* 数量、标签 */
     --text-sm:   13px;   /* 菜单项 */
     --text-base: 14px;   /* 任务文字 */
-    --text-md:   15px;   /* 输入框 */
+    --text-md:   15px;   /* 稍大一点的按钮文字、图标（输入框用下面的 --text-input） */
     --text-lg:   17px;   /* 清单名 */
     --text-xl:   22px;   /* 页面标题 */
+    /* 所有输入框统一用这个字号，不能小于 16px：
+       iPhone 发现输入框的字小于 16px，点进去时会自动把整个页面放大，而且输完不会缩回去 */
+    --text-input: 16px;
 
     /* ---- 圆角 ---- */
     --radius-sm: 4px;    /* 勾选框 */
@@ -58,6 +61,12 @@
     --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06);
     --shadow-menu: 0 2px 12px rgba(0, 0, 0, 0.14);
     --shadow-lift: 0 10px 28px rgba(0, 0, 0, 0.18);   /* 拖动时浮起来的那份 */
+  }
+
+  /* 手机上快速连点两下默认会放大页面。打卡页连点数字记两次时特别容易触发，
+     放大之后页面和屏幕就对不上了。manipulation 只关掉这一种，滚动照常 */
+  html {
+    touch-action: manipulation;
   }
 
   body {
@@ -266,22 +275,6 @@
 
   .log-count:active {
     background: var(--border-soft);
-  }
-
-  .new-log-btn {
-    width: 100%;
-    padding: var(--space-3);
-    font-size: var(--text-base);
-    color: var(--text-subtle);
-    background: none;
-    border: 1px dashed var(--border-soft);
-    border-radius: var(--radius-lg);
-    cursor: pointer;
-  }
-
-  .new-log-btn:hover {
-    color: var(--accent);
-    border-color: var(--accent);
   }
 
   /* 打完卡时浮在标签栏上方的"撤销"提示 */
@@ -504,7 +497,7 @@
     min-width: 0;
     padding: var(--space-2);
     font-family: inherit;
-    font-size: var(--text-sm);
+    font-size: var(--text-input);
     color: var(--text-body);
     background: var(--surface);
     border: 1px solid var(--border-soft);
@@ -516,9 +509,9 @@
     border-color: var(--accent);
   }
 
-  /* 补录和新增打卡的"确定 / 取消"是同一款小按钮 */
+  /* 补录和新建面板的"确定 / 取消"是同一款小按钮 */
   .backfill-editor button,
-  .log-draft-actions button {
+  .popup-actions button {
     flex-shrink: 0;
     padding: var(--space-2) var(--space-3);
     font-size: var(--text-sm);
@@ -528,13 +521,13 @@
   }
 
   .backfill-confirm,
-  .log-draft-create {
+  .popup-submit {
     color: var(--surface);
     background: var(--accent);
   }
 
   .backfill-cancel,
-  .log-draft-cancel {
+  .popup-cancel {
     color: var(--text-muted);
     background: var(--divider);
   }
@@ -597,7 +590,7 @@
     min-height: 32px;
     padding: 0 var(--space-3);
     font-family: inherit;
-    font-size: var(--text-sm);
+    font-size: var(--text-input);
     border: 1px solid var(--accent);
     border-radius: 999px;
     outline: none;
@@ -645,24 +638,6 @@
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2);
-  }
-
-  .log-draft {
-    padding: var(--space-3);
-    background: var(--surface);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-card);
-  }
-
-  .log-draft .add-input {
-    margin-bottom: var(--space-3);
-  }
-
-  .log-draft-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--space-2);
-    margin-top: var(--space-3);
   }
 
   .log-item-tags {
@@ -804,7 +779,7 @@
 
   .edit-input {
     flex: 1;
-    font-size: var(--text-md);
+    font-size: var(--text-input);
     padding: var(--space-1) var(--space-1);
     border: none;
     border-bottom: 1px solid var(--accent);
@@ -829,26 +804,97 @@
     width: 100%;
     box-sizing: border-box;
     padding: var(--space-3) var(--space-3);
-    font-size: var(--text-md);
+    font-size: var(--text-input);
     border: 1px solid var(--accent);
     border-radius: var(--radius-lg);
     outline: none;
   }
 
-  #new-category-btn {
-    width: 100%;
-    padding: var(--space-3);
-    font-size: var(--text-base);
-    color: var(--text-subtle);
-    background: none;
-    border: 1px dashed var(--border-soft);
-    border-radius: var(--radius-lg);
+  /* ---- 右下角悬浮的新建按钮（清单页、打卡页共用）---- */
+  .fab {
+    position: fixed;
+    /* 手机上贴屏幕右边；电脑上宽屏打开时，贴着内容区（body 最宽 480px）的右边，别跑到屏幕最边上去 */
+    right: max(var(--space-4), calc((100vw - 480px) / 2 + var(--space-4)));
+    /* 底部标签栏大约 56px 高，再往上留一点空。改标签栏高度时这里要跟着改 */
+    bottom: calc(72px + env(safe-area-inset-bottom));
+    z-index: 150;                      /* 比标签栏（100）高，比新建面板（300）低 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    padding: 0;
+    color: var(--surface);
+    background: var(--accent);
+    border: none;
+    border-radius: 50%;
+    box-shadow: var(--shadow-lift);
     cursor: pointer;
   }
 
-  #new-category-btn:hover {
-    color: var(--accent);
-    border-color: var(--accent);
+  .fab:active {
+    background: var(--accent-dark);
+    transform: scale(0.95);
+  }
+
+  .fab-icon {
+    width: 26px;
+    height: 26px;
+  }
+
+  /* 有 + 按钮的页面，列表底部多留一截，不然最后一项右边的 ⋯ 或大数字会被按钮挡住。
+     这个高度 = 按钮 56px + 上下留白，改按钮大小时要跟着改 */
+  .has-fab {
+    padding-bottom: 72px;
+  }
+
+  /* 打卡后的"撤销"提示原本在标签栏上方，和 + 按钮差不多高。
+     名字长一点提示就会变宽、压到按钮上，所以有按钮时把提示挪到按钮上面。
+     140px = 按钮的 bottom 72px + 按钮高 56px + 12px 间隔 */
+  .has-fab ~ .undo-toast {
+    bottom: calc(140px + env(safe-area-inset-bottom));
+  }
+
+  /* ---- 新建面板：暗色遮罩 + 靠上方的卡片 ---- */
+  .popup-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 300;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;           /* 靠上：键盘从下面升起来时挡不住 */
+    padding: max(var(--space-7), env(safe-area-inset-top)) var(--space-4) 0;
+    background: rgba(0, 0, 0, 0.32);
+  }
+
+  .popup-card {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 448px;                  /* 和 body 的内容宽度（480px 减去两边留白）对齐 */
+    padding: var(--space-4);
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-menu);
+  }
+
+  .popup-title {
+    margin-bottom: var(--space-3);
+    font-size: var(--text-lg);
+    font-weight: 600;
+    color: var(--text-title);
+  }
+
+  .popup-label {
+    margin: var(--space-4) 0 var(--space-2);
+    font-size: var(--text-xs);
+    color: var(--text-subtle);
+  }
+
+  .popup-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    margin-top: var(--space-4);
   }
 
   /* ---- 三个点的下拉菜单 ---- */
@@ -1139,7 +1185,7 @@
   .remind-select {
     flex: 1;
     padding: var(--space-2) 9px;
-    font-size: var(--text-base);
+    font-size: var(--text-input);
     color: var(--text-body);
     background: var(--surface);
     border: 1px solid var(--border-soft);
@@ -1215,7 +1261,7 @@
     width: 100%;
     padding: var(--space-3);
     font-family: inherit;
-    font-size: var(--text-base);
+    font-size: var(--text-input);
     line-height: 1.6;
     color: var(--text-body);
     background: var(--surface-sunken);

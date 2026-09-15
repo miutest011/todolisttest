@@ -215,7 +215,7 @@ test('清单页顶部：点标签只看这个标签下的清单；"已归档"下
 
   click(tagChip(root, '已归档'));
   assertEqual(visibleCategoryNames(root), ['旧项目'], '只剩归档的');
-  assertEqual(root.querySelector('#new-category-btn'), null, '新建的清单不是归档状态，建完会立刻消失，所以不给入口');
+  assertEqual(root.querySelector('.fab'), null, '新建的清单不是归档状态，建完会立刻消失，所以不给入口');
 });
 
 test('清单页顶部：用"+ 新增"建标签，长按能改名和删除（共用组件在清单页也好用）', async () => {
@@ -241,28 +241,98 @@ test('清单页顶部：用"+ 新增"建标签，长按能改名和删除（共�
   assertEqual(tagChip(root, '兼职'), undefined, '删除成功');
 });
 
-test('新建清单：停在某个标签下新建，直接放进这个标签', () => {
+// 点右下角的 +，打开新建清单的面板
+function openCategoryPanel(root) {
+  click(root.querySelector('.fab'));
+  return root.querySelector('.popup-card');
+}
+
+function typeCategoryName(root, name) {
+  const input = root.querySelector('.popup-card .add-input');
+  typeInto(input, name);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  return input;
+}
+
+test('新建清单：停在某个标签下新建，默认放进这个标签', () => {
   const { root } = listTagSetup();
   click(tagChip(root, '家里'));
 
-  click(root.querySelector('#new-category-btn'));
-  const input = root.querySelector('.add-input');
-  typeInto(input, '装修');
-  press(input, 'Enter');
+  openCategoryPanel(root);
+  assertEqual(textsOf(root, '.popup-card .tag-option.selected'), ['家里'], '面板里默认选中当前标签');
+  press(typeCategoryName(root, '装修'), 'Enter');
 
   assertEqual(categoryTagOf('装修'), 'ltag-家里', '放进了家里');
   assertEqual(visibleCategoryNames(root), ['生活', '装修'], '就在眼前');
+  assertEqual(root.querySelector('.popup-card'), null, '面板收起');
 });
 
-test('新建清单：在"所有"下新建，不放进任何标签', () => {
+test('新建清单：在"所有"下新建，默认不放进任何标签', () => {
   const { root } = listTagSetup();
 
-  click(root.querySelector('#new-category-btn'));
-  const input = root.querySelector('.add-input');
-  typeInto(input, '杂事');
-  press(input, 'Enter');
+  openCategoryPanel(root);
+  assertEqual(textsOf(root, '.popup-card .tag-option.selected'), [], '一个都没选');
+  press(typeCategoryName(root, '杂事'), 'Enter');
 
   assertEqual(categoryTagOf('杂事'), null, '不在标签下');
+});
+
+test('新建清单：面板里的标签像文件夹一样只能选一个，再点一下就是不放', () => {
+  const { root } = listTagSetup();
+
+  openCategoryPanel(root);
+  typeCategoryName(root, '装修');
+  click(tagOption(root, '公司'));
+  click(tagOption(root, '家里'));
+  assertEqual(textsOf(root, '.popup-card .tag-option.selected'), ['家里'], '选家里就换掉公司，不是两个都选');
+  assertEqual(root.querySelector('.popup-card .add-input').value, '装修', '点标签不能把打的名字清掉');
+
+  click(tagOption(root, '家里'));
+  assertEqual(textsOf(root, '.popup-card .tag-option.selected'), [], '再点一下取消');
+
+  click(tagOption(root, '公司'));
+  click(root.querySelector('.popup-submit'));
+  assertEqual(categoryTagOf('装修'), 'ltag-公司', '点"创建"按钮也行，放进了最后选的那个');
+});
+
+test('新建清单：在"公司"下却放进了"家里"，建完切回"所有"，免得以为没建成', () => {
+  const { root } = listTagSetup();
+  click(tagChip(root, '公司'));
+
+  openCategoryPanel(root);
+  typeCategoryName(root, '装修');
+  click(tagOption(root, '家里'));
+  click(root.querySelector('.popup-submit'));
+
+  assertEqual(textsOf(root, '.tag-chip.active'), ['所有'], '切回所有');
+  assert(visibleCategoryNames(root).includes('装修'), '看得到刚建的');
+});
+
+test('新建清单：在面板里新建标签，自动选上它', () => {
+  const { root } = listTagSetup();
+
+  openCategoryPanel(root);
+  typeCategoryName(root, '装修');
+  click(tagOption(root, '公司'));
+  click(tagOption(root, '+ 新增标签'));
+  const tagInput = root.querySelector('.popup-card .tag-input');
+  assert(document.activeElement === tagInput, '光标进标签输入框');
+  typeInto(tagInput, '副业');
+  press(tagInput, 'Enter');
+
+  assertEqual(textsOf(root, '.popup-card .tag-option.selected'), ['副业'], '新标签选上，原来的公司换掉');
+  assertEqual(root.querySelector('.popup-card .add-input').value, '装修', '名字还在');
+  assert(listTags.some((t) => t.name === '副业'), '建到了清单的标签里');
+});
+
+test('新建清单：名字空着点创建，什么都不建，面板收起', () => {
+  const { root } = listTagSetup();
+
+  openCategoryPanel(root);
+  click(root.querySelector('.popup-submit'));
+
+  assertEqual(categories.length, 4, '没建出来');
+  assertEqual(root.querySelector('.popup-card'), null, '面板收起');
 });
 
 test('清单 ⋯ 菜单：列出所有标签，当前所在的打勾，点别的就换过去', () => {
@@ -385,7 +455,7 @@ test('任务的"移动到"不列出归档的清单', () => {
   assertEqual(menu.includes('旧项目'), false, '归档了的清单不该往里放东西');
 });
 
-test('清单页：各种"没有东西"时的提示；新用户一个清单都没有时不提示', () => {
+test('清单页：各种"没有东西"时的提示；一个清单都没有时告诉用户点右下角的 +', () => {
   const { root } = setup({ categories: ['旧项目'], listTags: [listTag('公司')], categoryMeta: { '旧项目': { tagId: null, archived: true } } });
 
   assert(root.querySelector('.empty-state').textContent.includes('已归档'), '全归档了，告诉用户去哪找');
@@ -399,7 +469,7 @@ test('清单页：各种"没有东西"时的提示；新用户一个清单都没
   assert(root.querySelector('.empty-state').textContent.includes('⋯'), '说明从哪里归档');
 
   click(tagChip(root, '所有'));
-  assertEqual(root.querySelector('.empty-state'), null, '一个清单都没有时，下面就是"+ 新建清单"，不用再啰嗦');
+  assert(root.querySelector('.empty-state').textContent.includes('右下角'), '新建按钮不在列表里了，要告诉用户去哪点');
 });
 
 test('两页的筛选互不影响：打卡页选了标签，清单页还是"所有"', () => {

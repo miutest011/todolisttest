@@ -126,8 +126,8 @@ const MUTATIONS = [
     group: '打卡标签',
     name: '"已归档"下面也显示新增入口',
     file: 'logs.js',
-    find: "if (logTagFilter !== 'archived') {\n    view.appendChild(createNewLogItemRow());",
-    replace: 'if (true) {\n    view.appendChild(createNewLogItemRow());'
+    find: "if (logTagFilter !== 'archived') {\n    view.classList.add('has-fab');",
+    replace: "if (true) {\n    view.classList.add('has-fab');"
   },
   {
     group: '打卡标签',
@@ -233,13 +233,6 @@ const MUTATIONS = [
   },
   {
     group: '清单标签',
-    name: '停在标签下新建清单不放进去',
-    file: 'app.js',
-    find: 'addCategory(input.value, findListTag(listTagFilter) ? listTagFilter : null);',
-    replace: 'addCategory(input.value, null);'
-  },
-  {
-    group: '清单标签',
     name: '启动时先读归属、再读标签',
     file: 'app.js',
     find: '  listTags = loadListTags();   // 先读标签：读清单归属时要对照它，把已经不存在的标签去掉\n  categoryMeta = loadCategoryMeta();',
@@ -291,8 +284,8 @@ const MUTATIONS = [
     group: '清单标签',
     name: '"已归档"下也显示新建清单',
     file: 'app.js',
-    find: "if (listTagFilter !== 'archived') {\n    view.appendChild(createNewCategoryRow());",
-    replace: 'if (true) {\n    view.appendChild(createNewCategoryRow());'
+    find: "if (listTagFilter !== 'archived') {\n    view.classList.add('has-fab');",
+    replace: "if (true) {\n    view.classList.add('has-fab');"
   },
   {
     group: '清单标签',
@@ -314,6 +307,120 @@ const MUTATIONS = [
     file: 'app.js',
     find: "    if (current) {\n      items.push({ text: '不放进标签'",
     replace: "    if (true) {\n      items.push({ text: '不放进标签'"
+  },
+
+  // ---------- 新建按钮、新建面板、防缩放 ----------
+  {
+    group: '新建按钮与防缩放',
+    name: '打卡页没有 + 按钮',
+    file: 'logs.js',
+    find: "    view.appendChild(createFab('新增打卡', openLogItemDraft));\n",
+    replace: ''
+  },
+  {
+    group: '新建按钮与防缩放',
+    name: '菜单开着时点 +，不先关菜单就直接开面板',
+    file: 'app.js',
+    find: '    if (closeMenuIfOpen()) return;\n    onClick();',
+    replace: '    onClick();'
+  },
+  {
+    group: '新建按钮与防缩放',
+    name: '点面板卡片里面也会把面板关掉',
+    file: 'app.js',
+    find: 'if (event.target === overlay) options.onCancel();',
+    replace: 'options.onCancel();'
+  },
+  {
+    group: '新建按钮与防缩放',
+    name: '列表底部不留空（最后一项被 + 按钮挡住）',
+    file: 'app.js',
+    find: "    view.classList.add('has-fab');    // 列表底部多留点空",
+    replace: '    // 列表底部多留点空'
+  },
+  {
+    group: '新建按钮与防缩放',
+    name: '新建清单面板不默认选中当前标签',
+    file: 'app.js',
+    find: "  categoryDraft = { name: '', tagId: findListTag(listTagFilter) ? listTagFilter : null };",
+    replace: "  categoryDraft = { name: '', tagId: null };"
+  },
+  {
+    group: '新建按钮与防缩放',
+    name: '新建清单面板里的标签选了就取消不掉',
+    file: 'app.js',
+    find: '      draft.tagId = draft.tagId === tagId ? null : tagId;',
+    replace: '      draft.tagId = tagId;'
+  },
+  {
+    group: '新建按钮与防缩放',
+    name: '新建清单面板不记下打的名字（点标签就清空）',
+    file: 'app.js',
+    find: "  input.addEventListener('input', () => {\n    draft.name = input.value;\n  });",
+    replace: ''
+  },
+  {
+    group: '新建按钮与防缩放',
+    name: '新建清单放进别的标签后不切回"所有"',
+    file: 'app.js',
+    find: "  if (listTagFilter !== 'all' && listTagFilter !== draft.tagId) {",
+    replace: '  if (false) {'
+  },
+  {
+    group: '新建按钮与防缩放',
+    name: '重置时漏掉新建清单的面板',
+    file: 'app.js',
+    find: '  addingTaskIn = null;\n  categoryDraft = null;\n',
+    replace: '  addingTaskIn = null;\n'
+  },
+  {
+    group: '新建按钮与防缩放',
+    name: '+ 按钮没有固定在屏幕上（跟着列表滚走）',
+    file: 'style.css',
+    find: '  .fab {\n    position: fixed;',
+    replace: '  .fab {\n    position: absolute;'
+  },
+  {
+    group: '新建按钮与防缩放',
+    name: '+ 按钮放太低，被底部标签栏挡住',
+    file: 'style.css',
+    find: 'bottom: calc(72px + env(safe-area-inset-bottom));\n    z-index: 150;',
+    replace: 'bottom: calc(16px + env(safe-area-inset-bottom));\n    z-index: 150;'
+  },
+  {
+    group: '新建按钮与防缩放',
+    name: '"撤销"提示没挪到 + 按钮上方',
+    file: 'style.css',
+    find: '  .has-fab ~ .undo-toast {\n    bottom: calc(140px + env(safe-area-inset-bottom));',
+    replace: '  .has-fab ~ .undo-toast {\n    bottom: calc(76px + env(safe-area-inset-bottom));'
+  },
+  {
+    group: '新建按钮与防缩放',
+    name: '输入框字号小于 16px（iPhone 点进去会自动放大）',
+    file: 'style.css',
+    find: '    --text-input: 16px;',
+    replace: '    --text-input: 15px;'
+  },
+  {
+    group: '新建按钮与防缩放',
+    name: '没关掉"连点两下放大"',
+    file: 'style.css',
+    find: '    touch-action: manipulation;',
+    replace: '    touch-action: auto;'
+  },
+  {
+    group: '新建按钮与防缩放',
+    name: 'viewport 里没禁止缩放',
+    file: 'index.html',
+    find: 'maximum-scale=1, user-scalable=no, ',
+    replace: ''
+  },
+  {
+    group: '新建按钮与防缩放',
+    name: '没拦 iPhone 的双指缩放手势',
+    file: 'index.html',
+    find: "  document.addEventListener('gesturestart', (event) => event.preventDefault());",
+    replace: '  // （拦截被删掉了）'
   },
 
   // ---------- 测试工具自己 ----------
@@ -354,10 +461,17 @@ const MUTATIONS = [
   },
   {
     group: '测试工具',
-    name: '变异工具不检查文件有没有被测试页加载',
+    name: '变异工具改 style.css 这类文件时，测试读到的还是原文件',
     file: 'tools/mutate-runner.js',
-    find: 'return scripts.some((script) => scriptToProjectPath(script) === file);',
-    replace: 'return true;'
+    find: 'if (url.pathname === mutantPath) return',
+    replace: 'if (false) return'
+  },
+  {
+    group: '测试工具',
+    name: '变异工具不转义 <（改的内容里有 </script> 就把拦截器截断）',
+    file: 'tools/mutate-runner.js',
+    find: "JSON.stringify(code).replace(/</g, '\\\\u003c')",
+    replace: 'JSON.stringify(code)'
   },
   {
     group: '测试工具',

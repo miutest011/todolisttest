@@ -444,7 +444,11 @@ function createLogsView() {
 
   // "已归档"下面不给新增入口：新建的项目不是归档状态，建完会立刻从这一页消失
   if (logTagFilter !== 'archived') {
-    view.appendChild(createNewLogItemRow());
+    view.classList.add('has-fab');    // 列表底部多留点空，别让最后一项的大数字被 + 按钮挡住
+    view.appendChild(createFab('新增打卡', openLogItemDraft));
+  }
+  if (logItemDraft !== null) {
+    view.appendChild(createLogItemDraftPanel());
   }
   return view;
 }
@@ -454,7 +458,7 @@ function logEmptyMessage() {
     return '还没有归档的项目。不再打卡、但记录想留着的，可以在详情页 ⋯ 菜单里归档。';
   }
   if (logItems.length === 0) {
-    return '还没有打卡项目。比如"喝水""健身""给猫驱虫"，新增一个试试。';
+    return '还没有打卡项目。比如"喝水""健身""给猫驱虫"，点右下角的 + 新增一个试试。';
   }
   if (logTagFilter === 'all') {
     return '没有进行中的打卡项目，归档了的在「已归档」里。';
@@ -505,29 +509,21 @@ function createLogCountButton(item) {
   return btn;
 }
 
-// 列表底部的"+ 新增打卡"，点了之后变成一个小编辑区：名字 + 选标签 + 取消/创建
-function createNewLogItemRow() {
-  if (logItemDraft === null) {
-    const btn = document.createElement('button');
-    btn.className = 'new-log-btn';
-    btn.textContent = '+ 新增打卡';
-    btn.addEventListener('click', () => {
-      if (closeMenuIfOpen()) return;
-      // 正停在某个标签下的话，默认就带上这个标签 —— 在"健身"下新增的，多半就是健身的事
-      logItemDraft = { name: '', tagIds: findLogTag(logTagFilter) ? [logTagFilter] : [] };
-      render();
-    });
-    return btn;
-  }
+// ---- 新增打卡 ----
+function openLogItemDraft() {
+  // 正停在某个标签下的话，默认就带上这个标签 —— 在"健身"下新增的，多半就是健身的事
+  logItemDraft = { name: '', tagIds: findLogTag(logTagFilter) ? [logTagFilter] : [] };
+  render();
+}
 
+// 面板里：名字 + 可以多选的标签。面板的"壳"（遮罩、卡片、取消/创建）是 app.js 里共用的
+function createLogItemDraftPanel() {
   const draft = logItemDraft;
-  const box = document.createElement('div');
-  box.className = 'log-draft';
 
   const input = document.createElement('input');
   input.type = 'text';
   input.className = 'add-input';
-  input.placeholder = '打卡项目名称，回车创建';
+  input.placeholder = '打卡项目名称';
   // 点标签会让页面重画、输入框被重新造一个，所以边打字边把名字记下来，不然一点标签字就没了
   input.value = draft.name;
   input.addEventListener('input', () => {
@@ -541,8 +537,10 @@ function createNewLogItemRow() {
       cancelLogItemDraft();
     }
   });
-  // 注意这里不像别处那样"点到别处就收起"：
-  // 下面就是要点的标签，点它们必然会让输入框失去焦点
+
+  const label = document.createElement('div');
+  label.className = 'popup-label';
+  label.textContent = '标签';
 
   const picker = createTagPicker(
     logTagSet,
@@ -560,22 +558,12 @@ function createNewLogItemRow() {
     }
   );
 
-  const actions = document.createElement('div');
-  actions.className = 'log-draft-actions';
-
-  const cancelBtn = document.createElement('button');
-  cancelBtn.className = 'log-draft-cancel';
-  cancelBtn.textContent = '取消';
-  cancelBtn.addEventListener('click', cancelLogItemDraft);
-
-  const createBtn = document.createElement('button');
-  createBtn.className = 'log-draft-create';
-  createBtn.textContent = '创建';
-  createBtn.addEventListener('click', submitLogItemDraft);
-
-  actions.append(cancelBtn, createBtn);
-  box.append(input, picker, actions);
-  return box;
+  return createPopupCard({
+    title: '新增打卡',
+    body: [input, label, picker],
+    onSubmit: submitLogItemDraft,
+    onCancel: cancelLogItemDraft
+  });
 }
 
 function submitLogItemDraft() {
@@ -583,7 +571,7 @@ function submitLogItemDraft() {
   logItemDraft = null;
   addingTagIn = null;
 
-  // 名字为空或重名时不会新增，但编辑区还是要收起来
+  // 名字为空或重名时不会新增，但面板还是要收起来
   if (!addLogItem(draft.name, draft.tagIds)) {
     render();
     return;

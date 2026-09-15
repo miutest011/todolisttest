@@ -5,6 +5,8 @@
 // 唯一的验证办法是故意改坏代码、看测试会不会红。以前每一处都要手动"改文件 → 刷新 → 看结果 → 改回来"，
 // 慢，还容易忘了改回来。这里全在内存里做，磁盘上的文件从头到尾不动。
 //
+// 能改测试页加载的脚本，也能改测试用 fetch 去读的文件（style.css、index.html、sw.js）。
+//
 // 上半部分的小函数不碰页面，tests-mutate.js 里有测试盯着；
 // 最下面的 runMutant 要开 iframe，靠 mutate.html 每次运行前的两个"自检"来保证它没坏。
 
@@ -23,9 +25,10 @@ function scriptToProjectPath(script) {
   return script.startsWith('../') ? script.slice(3) : 'tools/' + script;
 }
 
-// 测试页有没有加载这个文件。没加载的话，改了也白改：测试照样全绿，
-// 却会被误报成"没抓到"，让人白查半天
-function isLoadedByTestPage(testHtml, file) {
+// 这个文件是不是测试页用 <script> 加载的脚本。
+// 是脚本的话，把改过的代码换进脚本列表；
+// 不是（style.css、index.html、sw.js 这些测试用 fetch 去读的文件），就得拦住 fetch 换内容 —— 见 buildMutantPage
+function isTestScript(testHtml, file) {
   const scripts = parseTestScripts(testHtml) || [];
   return scripts.some((script) => scriptToProjectPath(script) === file);
 }
@@ -51,21 +54,43 @@ function toScriptUrl(code) {
   return 'data:text/javascript;charset=utf-8,' + encodeURIComponent(code + '\n//');
 }
 
-// 拼出"加载改过的代码"的测试页。
-// scriptPath 为 null 时一行代码都不换 —— 用来跑"没改过"的对照组
-function buildMutantPage(testHtml, baseHref, scriptPath, scriptUrl) {
+// 拼出"用了改过的文件"的测试页。
+// file 为 null 时什么都不换 —— 用来跑"没改过"的对照组。
+//   - 改的是测试页加载的脚本：把脚本列表里那一项换成改过的代码
+//   - 改的是别的文件（比如 style.css、index.html）：测试是用 fetch 去读它们的，
+//     所以在测试页最前面装一个"拦截器"，谁 fetch 这个文件就把改过的内容给谁
+function buildMutantPage(testHtml, baseHref, file, code) {
   const scripts = parseTestScripts(testHtml);
+  const asScript = file !== null && isTestScript(testHtml, file);
   const list = scripts.map((script) => (
-    scriptPath !== null && scriptToProjectPath(script) === scriptPath ? scriptUrl : script
+    asScript && scriptToProjectPath(script) === file ? toScriptUrl(code) : script
   ));
 
   // <base> 让测试页里的相对路径（其它脚本、../index.html）照常能找到。
   // 另外记下加载时的语法错误：改出语法错误的变异会让一大片测试失败，但那不叫"测试抓到了 bug"
-  const head =
+  let head =
     `<head><base href="${baseHref}">` +
     '<script>window.__syntaxErrors = [];' +
     'addEventListener("error", function (e) { if (e.error && e.error.name === "SyntaxError") __syntaxErrors.push(e.message); });' +
     '</script>';
+
+  if (file !== null && !asScript) {
+    const path = new URL(file, new URL('../', baseHref)).pathname;
+    // 内容要塞进 <script> 里：JSON 能处理引号换行，但不管 < 号，
+    // 内容里要是有 </script> 会把这段脚本提前截断，所以把 < 也转义掉
+    const text = JSON.stringify(code).replace(/</g, '\\u003c');
+    head +=
+      '<script>(function () {' +
+      'var realFetch = window.fetch;' +
+      `var mutantPath = ${JSON.stringify(path)};` +
+      `var mutantText = ${text};` +
+      'window.fetch = function (input, init) {' +
+      '  var url = new URL(typeof input === "string" ? input : input.url, document.baseURI);' +
+      '  if (url.pathname === mutantPath) return Promise.resolve(new Response(mutantText, { status: 200 }));' +
+      '  return realFetch.apply(this, arguments);' +
+      '};' +
+      '})();</script>';
+  }
 
   // 两处都用函数当第二个参数，理由同 applyMutation：别让 $ 被展开
   return testHtml
@@ -75,12 +100,11 @@ function buildMutantPage(testHtml, baseHref, scriptPath, scriptUrl) {
 
 // ---- 判断结果 ----
 // 一条变异最后是什么结局：
-//   unloaded  测试页根本没加载这个文件
 //   stale     过期了：find 在文件里不是正好一处
 //   broken    改出了语法错误、或者脚本加载失败，代码根本跑不起来（不算测试的功劳）
 //   timeout   测试页一直没跑完
 //   killed    抓到了：有测试失败（或者两遍结果不一样）
-//   survived  没抓到：测试全绿 —— 要去查
+//   survived  没抓到：测试全绿 —— 要去查（改的是 style.css 这类文件时，也可能是根本没有测试去读它）
 function classifyMutant(run) {
   if (run.count !== 1) return 'stale';
   // 加载失败时测试页只写一句"加载失败"、一条失败都不列，不单独判断的话会被当成"没抓到"
@@ -94,21 +118,18 @@ function classifyMutant(run) {
 // options: { testHtml, baseHref, source, file, find, replace, timeoutMs }
 //   source 为 null 表示跑对照组（什么都不改）
 async function runMutant(options) {
-  let scriptPath = null;
-  let scriptUrl = null;
+  let file = null;
+  let code = null;
   let count = 1;
 
   if (options.source !== null) {
-    if (!isLoadedByTestPage(options.testHtml, options.file)) {
-      return { status: 'unloaded', count: 0, summary: '', failed: [], syntaxErrors: [] };
-    }
     const mutated = applyMutation(options.source, options.find, options.replace);
     count = mutated.count;
     if (!mutated.ok) {
       return { status: 'stale', count: count, summary: '', failed: [], syntaxErrors: [] };
     }
-    scriptPath = options.file;
-    scriptUrl = toScriptUrl(mutated.code);
+    file = options.file;
+    code = mutated.code;
   }
 
   const iframe = document.createElement('iframe');
@@ -116,7 +137,7 @@ async function runMutant(options) {
   // 放在屏幕外面但保留正常大小：拖拽类的测试要算元素位置，尺寸是 0 的话会乱
   iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:420px;height:800px;border:0;';
   document.body.appendChild(iframe);
-  iframe.srcdoc = buildMutantPage(options.testHtml, options.baseHref, scriptPath, scriptUrl);
+  iframe.srcdoc = buildMutantPage(options.testHtml, options.baseHref, file, code);
 
   const deadline = Date.now() + (options.timeoutMs || 60000);
   let finished = false;

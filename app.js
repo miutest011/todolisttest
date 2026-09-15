@@ -103,7 +103,7 @@ let listTags = [];          // 清单页自己的标签 [{ id, name }]，和打�
 // 注意这里是按清单名字记的（和任务、折叠状态一样），所以清单改名时要跟着改
 let categoryMeta = {};
 let addingTaskIn = null;    // 正在哪个清单里输入新任务
-let addingCategory = false; // 是否正在输入新清单的名字
+let categoryDraft = null;   // 正在新建的清单 { name, tagId }，null = 新建面板没打开
 let editingTaskIndex = null;// 正在重命名的任务（它在 todos 里的位置）
 let editingCategory = null; // 正在重命名的清单名字
 let openMenuKey = null;     // 哪个三点菜单是展开的，例如 'task-2'、'category-工作'
@@ -118,7 +118,7 @@ let listTagFilter = 'all';  // 清单页顶部选中了哪个：'all'（所有�
 // 把"临时"的界面状态清空（数据状态不动）
 function resetViewState() {
   addingTaskIn = null;
-  addingCategory = false;
+  categoryDraft = null;
   editingTaskIndex = null;
   editingCategory = null;
   openMenuKey = null;
@@ -570,21 +570,106 @@ function createTasksView() {
   view.appendChild(categoryList);
   // "已归档"下面不给新建入口：新建的清单不是归档状态，建完会立刻从这一页消失
   if (listTagFilter !== 'archived') {
-    view.appendChild(createNewCategoryRow());
+    view.classList.add('has-fab');    // 列表底部多留点空，别让最后一个清单的 ⋯ 被 + 按钮挡住
+    view.appendChild(createFab('新建清单', openCategoryDraft));
+  }
+  if (categoryDraft !== null) {
+    view.appendChild(createCategoryDraftPanel());
   }
   return view;
 }
 
-// 筛选后一个清单都没有时说什么。一个清单都没建过的新用户不用提示，下面就是"+ 新建清单"
+// 筛选后一个清单都没有时说什么
 function listEmptyMessage(shown) {
   if (shown.length > 0) return '';
   if (listTagFilter === 'archived') {
     return '还没有归档的清单。暂时不用的清单，可以在它的 ⋯ 菜单里归档。';
   }
   if (listTagFilter === 'all') {
-    return categories.length > 0 ? '没有正在用的清单，归档了的在「已归档」里。' : '';
+    return categories.length > 0
+      ? '没有正在用的清单，归档了的在「已归档」里。'
+      : '还没有清单。点右下角的 + 新建一个。';
   }
-  return '这个标签下还没有清单。停在这里新建清单，或者在清单的 ⋯ 菜单里放进来。';
+  return '这个标签下还没有清单。点右下角的 + 新建，或者在清单的 ⋯ 菜单里放进来。';
+}
+
+// ---- 新建清单 ----
+function openCategoryDraft() {
+  // 正停在某个标签下的话，默认就放进这个标签
+  categoryDraft = { name: '', tagId: findListTag(listTagFilter) ? listTagFilter : null };
+  render();
+}
+
+// 面板里：名字 + 放进哪个标签（像文件夹，只能选一个，再点一下就是不放）
+function createCategoryDraftPanel() {
+  const draft = categoryDraft;
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'add-input';
+  input.placeholder = '清单名称';
+  // 点标签会让页面重画、输入框被重新造一个，所以边打字边把名字记下来，不然一点标签字就没了
+  input.value = draft.name;
+  input.addEventListener('input', () => {
+    draft.name = input.value;
+  });
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      draft.name = input.value;
+      submitCategoryDraft();
+    } else if (event.key === 'Escape') {
+      cancelCategoryDraft();
+    }
+  });
+
+  const label = document.createElement('div');
+  label.className = 'popup-label';
+  label.textContent = '放到标签';
+
+  const picker = createTagPicker(
+    listTagSet,
+    draft.tagId ? [draft.tagId] : [],
+    (tagId) => {
+      draft.tagId = draft.tagId === tagId ? null : tagId;
+      render();
+    },
+    'lists-draft',
+    (tag) => {
+      draft.tagId = tag.id;    // 在这里新建的标签，当然是想放进去的
+      render();
+    }
+  );
+
+  return createPopupCard({
+    title: '新建清单',
+    body: [input, label, picker],
+    onSubmit: submitCategoryDraft,
+    onCancel: cancelCategoryDraft
+  });
+}
+
+function submitCategoryDraft() {
+  const draft = categoryDraft;
+  categoryDraft = null;
+  addingTagIn = null;
+
+  // 名字为空或重名时不会新建，但面板还是要收起来
+  if (!addCategory(draft.name, draft.tagId)) {
+    render();
+    return;
+  }
+
+  // 正在看"公司"，却把新清单放进了别的标签：建完它不在当前页面上，看起来像没建成 —— 切回"所有"
+  if (listTagFilter !== 'all' && listTagFilter !== draft.tagId) {
+    listTagFilter = 'all';
+    render();
+  }
+}
+
+function cancelCategoryDraft() {
+  categoryDraft = null;
+  addingTagIn = null;
+  render();
 }
 
 // ---- "今天"标签页 ----
@@ -901,6 +986,7 @@ const ICON_PATHS = {
   arrowUp: 'M12 19V5M5 12l7-7 7 7',
   list: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
   chevronLeft: 'M15 18l-6-6 6-6',
+  plus: 'M12 5v14M5 12h14',
   calendar: 'M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2zM16 2v4M8 2v4M3 10h18',
   checkCircle: 'M22 11.08V12a10 10 0 11-5.93-9.14M22 4L12 14.01l-3-3',
   // 手写风格的圈：起笔和收笔故意错开一点、椭圆也不对称，看起来像笔圈出来的。
@@ -987,50 +1073,6 @@ function createAddTaskRow(category) {
   return input;
 }
 
-// 底部的"+ 新建清单"，点了之后同样变成输入框
-function createNewCategoryRow() {
-  if (!addingCategory) {
-    const btn = document.createElement('button');
-    btn.id = 'new-category-btn';
-    btn.textContent = '+ 新建清单';
-    btn.addEventListener('click', () => {
-      if (closeMenuIfOpen()) return;
-      addingCategory = true;
-      render();
-    });
-    return btn;
-  }
-
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.className = 'add-input';
-  input.placeholder = '清单名称，回车创建';
-
-  let skipBlur = false;
-
-  input.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') {
-      skipBlur = true;
-      // 停在某个标签下新建的，直接放进这个标签。名字为空或重名时内部会忽略
-      addCategory(input.value, findListTag(listTagFilter) ? listTagFilter : null);
-      addingCategory = false;
-      render();
-    } else if (event.key === 'Escape') {
-      skipBlur = true;
-      addingCategory = false;
-      render();
-    }
-  });
-
-  input.addEventListener('blur', () => {
-    if (skipBlur) return;
-    addingCategory = false;
-    render();
-  });
-
-  return input;
-}
-
 // 重命名用的输入框：回车保存、Esc 取消、点到别处也算保存。清单和任务共用。
 // finished 保证只结束一次：回车结束后页面会重画、输入框被删掉，
 // 浏览器还会再触发一次 blur，这时候要忽略掉
@@ -1086,6 +1128,68 @@ function createPageHeader(onBack, menu) {
   }
 
   return header;
+}
+
+// ---- 右下角悬浮的新建按钮 ----
+// 清单多了以后，"新建"要是放在列表最底下，每次都得滑到底才点得到。
+// 浮在右下角就一直够得着。清单页和打卡页共用，以后别的页面要"新建"也用它
+function createFab(label, onClick) {
+  const btn = document.createElement('button');
+  btn.className = 'fab';
+  btn.title = label;
+  btn.setAttribute('aria-label', label);   // 按钮上只有一个 + 号，读屏软件要靠这个知道它是干嘛的
+  btn.appendChild(createIcon('plus', 'fab-icon'));
+  btn.addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (closeMenuIfOpen()) return;
+    onClick();
+  });
+  return btn;
+}
+
+// ---- 新建面板：半透明遮罩 + 靠上方的卡片 + 取消 / 创建 ----
+// 只管外面这个"壳"，卡片里放什么由调用方决定（打卡要名字 + 多选标签，清单要名字 + 单选标签）。
+//
+// 为什么靠上方而不是贴底：iPhone 上网页弹出键盘时，贴底的东西常被键盘盖住或跳来跳去；
+// 放在上方，键盘从下面升起来怎么都挡不住它。
+//
+// options: { title, body: [元素…], submitText, onSubmit, onCancel }
+function createPopupCard(options) {
+  const overlay = document.createElement('div');
+  overlay.className = 'popup-overlay';
+  // 点卡片外面的暗色区域 = 取消。点卡片里面不算（事件目标是卡片里的东西，不是遮罩本身）
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) options.onCancel();
+  });
+
+  const card = document.createElement('div');
+  card.className = 'popup-card';
+  card.setAttribute('role', 'dialog');
+
+  const title = document.createElement('div');
+  title.className = 'popup-title';
+  title.textContent = options.title;
+  card.appendChild(title);
+
+  options.body.forEach((element) => card.appendChild(element));
+
+  const actions = document.createElement('div');
+  actions.className = 'popup-actions';
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'popup-cancel';
+  cancelBtn.textContent = '取消';
+  cancelBtn.addEventListener('click', options.onCancel);
+
+  const submitBtn = document.createElement('button');
+  submitBtn.className = 'popup-submit';
+  submitBtn.textContent = options.submitText || '创建';
+  submitBtn.addEventListener('click', options.onSubmit);
+
+  actions.append(cancelBtn, submitBtn);
+  card.appendChild(actions);
+  overlay.appendChild(card);
+  return overlay;
 }
 
 // ---- 三点菜单 ----

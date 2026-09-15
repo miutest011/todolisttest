@@ -244,7 +244,7 @@ test('打卡页：点"+ 新增打卡"，输入名字回车就创建', () => {
   const { root } = setup();
   openLogsTab(root);
 
-  click(root.querySelector('.new-log-btn'));
+  click(root.querySelector('.fab'));
   const input = root.querySelector('.add-input');
   assert(input, '点了之后应该出现输入框');
 
@@ -871,11 +871,11 @@ test('打卡页顶部：点标签就只看这一类，高亮跟着走', () => {
 
   click(tagChip(root, '已归档'));
   assertEqual(visibleLogNames(root), ['旧习惯'], '只剩归档的');
-  assertEqual(root.querySelector('.new-log-btn'), null, '已归档下不给新增入口：新建的不是归档状态，会立刻消失');
+  assertEqual(root.querySelector('.fab'), null, '已归档下不给新增入口：新建的不是归档状态，会立刻消失');
 
   click(tagChip(root, '所有'));
   assertEqual(visibleLogNames(root), ['跑步', '读书'], '回到所有');
-  assert(root.querySelector('.new-log-btn'), '新增入口回来了');
+  assert(root.querySelector('.fab'), '新增入口回来了');
 });
 
 test('打卡页顶部：各种"没有东西"时的提示说得清楚', () => {
@@ -926,37 +926,37 @@ test('新增打卡：可以顺手选标签，点标签不会把已经打的名�
   const { root } = taggedSetup();
   openLogsTab(root);
 
-  click(root.querySelector('.new-log-btn'));
-  const input = root.querySelector('.log-draft .add-input');
+  click(root.querySelector('.fab'));
+  const input = root.querySelector('.popup-card .add-input');
   typeInto(input, '游泳');
   input.dispatchEvent(new Event('input', { bubbles: true }));
 
   click(tagOption(root, '健身'));    // 页面会重画，输入框是新造的
 
-  assertEqual(root.querySelector('.log-draft .add-input').value, '游泳', '名字不能丢 —— 手机上这种事特别让人抓狂');
+  assertEqual(root.querySelector('.popup-card .add-input').value, '游泳', '名字不能丢 —— 手机上这种事特别让人抓狂');
   assertEqual(textsOf(root, '.tag-option.selected'), ['健身'], '点了的标签高亮');
 
-  press(root.querySelector('.log-draft .add-input'), 'Enter');
+  press(root.querySelector('.popup-card .add-input'), 'Enter');
 
   assertEqual(findLogItemByName('游泳').tagIds, ['tag-健身'], '建出来的项目带着选的标签');
-  assertEqual(root.querySelector('.log-draft'), null, '编辑区收起');
+  assertEqual(root.querySelector('.popup-card'), null, '面板收起');
 });
 
 test('新增打卡：点"创建"按钮也能建，点"取消"什么都不建', () => {
   const { root } = taggedSetup();
   openLogsTab(root);
 
-  click(root.querySelector('.new-log-btn'));
-  typeInto(root.querySelector('.log-draft .add-input'), '游泳');
-  click(root.querySelector('.log-draft-cancel'));
+  click(root.querySelector('.fab'));
+  typeInto(root.querySelector('.popup-card .add-input'), '游泳');
+  click(root.querySelector('.popup-cancel'));
   assertEqual(findLogItemByName('游泳'), null, '取消不该建');
-  assertEqual(root.querySelector('.log-draft'), null, '取消后收起');
+  assertEqual(root.querySelector('.popup-card'), null, '取消后收起');
 
-  click(root.querySelector('.new-log-btn'));
-  const input = root.querySelector('.log-draft .add-input');
+  click(root.querySelector('.fab'));
+  const input = root.querySelector('.popup-card .add-input');
   typeInto(input, '游泳');
   input.dispatchEvent(new Event('input', { bubbles: true }));
-  click(root.querySelector('.log-draft-create'));
+  click(root.querySelector('.popup-submit'));
   assert(findLogItemByName('游泳'), '点创建应该建出来');
 });
 
@@ -965,10 +965,10 @@ test('新增打卡：停在某个标签下时，默认带上这个标签，建�
   openLogsTab(root);
   click(tagChip(root, '健身'));
 
-  click(root.querySelector('.new-log-btn'));
+  click(root.querySelector('.fab'));
   assertEqual(textsOf(root, '.tag-option.selected'), ['健身'], '默认选上当前标签');
 
-  const input = root.querySelector('.log-draft .add-input');
+  const input = root.querySelector('.popup-card .add-input');
   typeInto(input, '游泳');
   press(input, 'Enter');
 
@@ -982,9 +982,9 @@ test('新增打卡：在某个标签下却取消了这个标签，建完切回"�
   openLogsTab(root);
   click(tagChip(root, '健身'));
 
-  click(root.querySelector('.new-log-btn'));
+  click(root.querySelector('.fab'));
   click(tagOption(root, '健身'));      // 取消掉默认带的
-  const input = root.querySelector('.log-draft .add-input');
+  const input = root.querySelector('.popup-card .add-input');
   typeInto(input, '游泳');
   press(input, 'Enter');
 
@@ -996,13 +996,13 @@ test('新增打卡：在编辑区里新建标签，自动给这个项目选上�
   const { root } = taggedSetup();
   openLogsTab(root);
 
-  click(root.querySelector('.new-log-btn'));
-  const nameInput = root.querySelector('.log-draft .add-input');
+  click(root.querySelector('.fab'));
+  const nameInput = root.querySelector('.popup-card .add-input');
   typeInto(nameInput, '游泳');
   nameInput.dispatchEvent(new Event('input', { bubbles: true }));
 
   click(tagOption(root, '+ 新增标签'));
-  const tagInput = root.querySelector('.log-draft .tag-input');
+  const tagInput = root.querySelector('.popup-card .tag-input');
   assert(tagInput, '应该出现标签输入框');
   assert(document.activeElement === tagInput, '光标要进标签输入框，而不是上面的名字输入框');
 
@@ -1010,7 +1010,7 @@ test('新增打卡：在编辑区里新建标签，自动给这个项目选上�
   press(tagInput, 'Enter');
 
   assertEqual(textsOf(root, '.tag-option.selected'), ['水上'], '新标签自动选上');
-  assertEqual(root.querySelector('.log-draft .add-input').value, '游泳', '名字还在');
+  assertEqual(root.querySelector('.popup-card .add-input').value, '游泳', '名字还在');
   assert(tagChip(root, '水上'), '顶部也出现了');
 });
 
@@ -1163,7 +1163,7 @@ test('标签：重新打开应用时，选中的标签、输入、管理、新�
   click(tagChip(root, '健身'));
   click(tagChip(root, '+ 新增'));
   tagChip(root, '学习').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
-  click(root.querySelector('.new-log-btn'));
+  click(root.querySelector('.fab'));
 
   initApp(root);
 

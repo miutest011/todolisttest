@@ -151,11 +151,9 @@
   .row.survived { background: #fdecea; }
   .row.survived .badge { color: #c62828; }
 
-  /* 过期 / 没加载：清单要更新，黄色 */
-  .row.stale .badge,
-  .row.unloaded .badge { color: #8a6100; }
-  .row.stale,
-  .row.unloaded { background: #fff8e6; }
+  /* 过期：清单要更新，黄色 */
+  .row.stale .badge { color: #8a6100; }
+  .row.stale { background: #fff8e6; }
 
   /* 跑不起来 / 超时：变异写得不好，灰色 */
   .row.broken .badge,
@@ -199,7 +197,6 @@
     killed: '抓到了',
     survived: '没抓到',
     stale: '已过期',
-    unloaded: '没加载',
     broken: '跑不起来',
     timeout: '超时'
   };
@@ -313,13 +310,12 @@
           (result.failed.length > 5 ? ` 等` : '') + (result.unstable ? '（另外两遍结果不一致）' : '');
       case 'survived':
         return '测试全绿。先确认这个改动是不是真的造成了用户看得出的差别——没有的话是变异无效，' +
-          '甚至可能说明原来那段代码是多余的；有的话就是测试漏了，去补一条。';
+          '甚至可能说明原来那段代码是多余的；有的话就是测试漏了，去补一条。' +
+          '（改的是 style.css、index.html 这类文件时，也可能是根本没有测试去读它。）';
       case 'stale':
         return result.count === 0
           ? '在文件里找不到这段原文：代码后来改过了。照着现在的代码更新 find，或者删掉这一条。'
           : `这段原文在文件里出现了 ${result.count} 处，不知道该改哪一处。把 find 写长一点，带上前后几个字。`;
-      case 'unloaded':
-        return '测试页（test.html 的 SCRIPTS）没有加载这个文件，改了也白改。';
       case 'broken':
         return '改完之后代码跑不起来（' + (result.syntaxErrors[0] || result.summary) + '）。' +
           '这种"失败"不算测试的功劳，把 replace 改成语法正确的写法。';
@@ -334,7 +330,7 @@
     const all = Object.values(results);
     const count = (status) => all.filter((r) => r.status === status).length;
     const survived = count('survived');
-    const needsFix = count('stale') + count('unloaded') + count('broken') + count('timeout');
+    const needsFix = count('stale') + count('broken') + count('timeout');
 
     const parts = [`抓到 ${count('killed')}`, `没抓到 ${survived}`];
     if (needsFix > 0) parts.push(`清单要更新 ${needsFix}`);
