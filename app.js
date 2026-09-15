@@ -741,8 +741,14 @@ function defaultTaskCategory() {
   return categoriesInFilter('all')[0] || null;
 }
 
+// 新建任务的草稿：名字、放进哪个清单、截止时间和提醒（dueAt / remindBefore），
+// editingDue 表示面板里的闹钟设置区是不是展开着
+function newTaskDraft(category) {
+  return { text: '', category: category, dueAt: null, remindBefore: null, editingDue: false };
+}
+
 function openTaskDraft() {
-  taskDraft = { text: '', category: defaultTaskCategory() };
+  taskDraft = newTaskDraft(defaultTaskCategory());
   render();
 }
 
@@ -768,10 +774,7 @@ function createTaskDraftPanel() {
     }
   });
 
-  const label = document.createElement('div');
-  label.className = 'popup-label';
-  label.textContent = '放进清单';
-
+  // 一排清单，选中的是蓝底 —— 不用再写"放进清单"几个字，一看就懂。
   // 长得和选标签的那排一样。归档了的清单不列：暂时不用的地方，不该往里放东西
   const picker = document.createElement('div');
   picker.className = 'tag-picker';
@@ -787,9 +790,41 @@ function createTaskDraftPanel() {
     picker.appendChild(option);
   });
 
+  // 这一排最后是闹钟，和详情页"清单标签旁边是闹钟"一个样子、一样的逻辑
+  picker.appendChild(createDueButton(draft.dueAt, draft.remindBefore, () => {
+    draft.editingDue = !draft.editingDue;
+    render();
+  }));
+
+  const body = [input, picker];
+  if (draft.editingDue) {
+    body.push(createDueEditor(draft.dueAt, draft.remindBefore, {
+      onSave: (inputValue, remindValue) => {
+        const parsed = parseDueInput(inputValue, remindValue);
+        if (!parsed) return;      // 没选日期就不保存，设置区留着
+        draft.dueAt = parsed.dueAt;
+        draft.remindBefore = parsed.remindBefore;
+        draft.editingDue = false;
+        // 和详情页一样：要提醒的话，趁用户刚点完按钮申请通知权限（浏览器只在用户操作时才允许弹）
+        if (parsed.remindBefore !== null) ensureNotifyPermission();
+        render();
+      },
+      onCancel: () => {
+        draft.editingDue = false;
+        render();
+      },
+      onClear: () => {
+        draft.dueAt = null;
+        draft.remindBefore = null;
+        draft.editingDue = false;
+        render();
+      }
+    }));
+  }
+
   return createPopupCard({
     title: '新建任务',
-    body: [input, label, picker],
+    body: body,
     submitText: '添加',
     // 包一层再传：点击时浏览器会把"点击事件"塞给第一个参数，直接传 submitTaskDraft 的话，
     // keepOpen 就成了那个事件（算"真"），点"添加"也不收起了
@@ -819,9 +854,10 @@ function submitTaskDraft(keepOpen) {
     listTagFilter = 'all';
   }
   if (keepOpen) {
-    taskDraft = { text: '', category: draft.category };   // 还放进同一个清单
+    // 接着输下一条：还放进同一个清单，但时间清空 —— 每条任务的时间一般不一样，带着上一条的容易设错
+    taskDraft = newTaskDraft(draft.category);
   }
-  addTodo(draft.category, draft.text);
+  addTodo(draft.category, draft.text, { dueAt: draft.dueAt, remindBefore: draft.remindBefore });
 }
 
 function cancelTaskDraft() {
@@ -1536,11 +1572,21 @@ function createDetailPage(index) {
   listChip.className = 'list-chip';
   listChip.textContent = todo.category;
 
-  meta.append(listChip, createDueButton(index));
+  meta.append(listChip, createDueButton(todo.dueAt, todo.remindBefore, () => {
+    editingDueFor = editingDueFor === index ? null : index;   // 再点一次收起
+    render();
+  }));
   page.appendChild(meta);
 
   if (editingDueFor === index) {
-    page.appendChild(createDueEditor(index));
+    page.appendChild(createDueEditor(todo.dueAt, todo.remindBefore, {
+      onSave: (inputValue, remindValue) => setDue(index, inputValue, remindValue),
+      onCancel: () => {
+        editingDueFor = null;
+        render();
+      },
+      onClear: () => clearDue(index)
+    }));
   }
 
   // 设了提醒但浏览器不给弹通知，得告诉用户一声，否则会以为坏了
@@ -1684,21 +1730,21 @@ function formatFileSize(bytes) {
 }
 
 // 详情页里的一行：左边灰色标签，右边内容
-// 详情页清单标签旁边的闹钟：截止时间和提醒合在这一个按钮里，点开就能设置。
+// 闹钟：截止时间和提醒合在这一个按钮里，点开就能设置。详情页和新建任务面板共用。
 // 没设时间：只有一个灰色的闹钟。设了时间：闹钟变红，旁边写上什么时候到期。
-// 提醒没有单独显示在界面上（地方小），但读屏软件和鼠标悬停时能听到 / 看到
-function createDueButton(index) {
-  const todo = todos[index];
+// 提醒没有单独显示在界面上（地方小），但读屏软件和鼠标悬停时能听到 / 看到。
+// 点了之后做什么由调用方决定（详情页是展开编辑区，面板里也是，但记在不同的地方）
+function createDueButton(dueAt, remindBefore, onClick) {
   const btn = document.createElement('button');
-  btn.className = todo.dueAt ? 'due-btn has-due' : 'due-btn';
+  btn.className = dueAt ? 'due-btn has-due' : 'due-btn';
   btn.appendChild(createIcon('alarm', 'due-icon'));
 
-  if (todo.dueAt) {
+  if (dueAt) {
     const time = document.createElement('span');
     time.className = 'due-text';
-    time.textContent = formatDueShort(todo.dueAt);
+    time.textContent = formatDueShort(dueAt);
     btn.appendChild(time);
-    const label = `截止 ${formatDateTime(todo.dueAt)}，${remindLabel(todo.remindBefore)}`;
+    const label = `截止 ${formatDateTime(dueAt)}，${remindLabel(remindBefore)}`;
     btn.title = label;
     btn.setAttribute('aria-label', label);
   } else {
@@ -1706,11 +1752,7 @@ function createDueButton(index) {
     btn.setAttribute('aria-label', '设置截止时间和提醒');
   }
 
-  btn.addEventListener('click', () => {
-    // 再点一次收起编辑区
-    editingDueFor = editingDueFor === index ? null : index;
-    render();
-  });
+  btn.addEventListener('click', onClick);
   return btn;
 }
 
@@ -1733,15 +1775,16 @@ function formatDueShort(isoText) {
 }
 
 // 点了时钟图标之后展开的编辑区：选时间 + 选提醒方式
-function createDueEditor(index) {
-  const todo = todos[index];
+// 闹钟下面展开的设置区：选时间 + 选提醒方式。详情页和新建任务面板共用。
+// 选完交给调用方：actions.onSave(输入框的值, 提醒的值) / onCancel() / onClear()
+function createDueEditor(dueAt, remindBefore, actionsFor) {
   const box = document.createElement('div');
   box.className = 'due-editor';
 
   const dateInput = document.createElement('input');
   dateInput.type = 'datetime-local';
   dateInput.className = 'due-input';
-  dateInput.value = toDateTimeInputValue(todo.dueAt);
+  dateInput.value = toDateTimeInputValue(dueAt);
 
   const select = document.createElement('select');
   select.className = 'remind-select';
@@ -1749,7 +1792,7 @@ function createDueEditor(index) {
     const optionEl = document.createElement('option');
     optionEl.value = option.minutes === null ? '' : String(option.minutes);
     optionEl.textContent = option.label;
-    if (todo.remindBefore === option.minutes) {
+    if (remindBefore === option.minutes) {
       optionEl.selected = true;
     }
     select.appendChild(optionEl);
@@ -1761,24 +1804,21 @@ function createDueEditor(index) {
   const saveBtn = document.createElement('button');
   saveBtn.className = 'btn-primary';
   saveBtn.textContent = '保存';
-  saveBtn.addEventListener('click', () => setDue(index, dateInput.value, select.value));
+  saveBtn.addEventListener('click', () => actionsFor.onSave(dateInput.value, select.value));
 
   const cancelBtn = document.createElement('button');
   cancelBtn.className = 'btn-plain';
   cancelBtn.textContent = '取消';
-  cancelBtn.addEventListener('click', () => {
-    editingDueFor = null;
-    render();
-  });
+  cancelBtn.addEventListener('click', () => actionsFor.onCancel());
 
   actions.append(saveBtn, cancelBtn);
 
   // 已经设过截止时间才需要"清除"
-  if (todo.dueAt) {
+  if (dueAt) {
     const clearBtn = document.createElement('button');
     clearBtn.className = 'btn-danger';
     clearBtn.textContent = '清除';
-    clearBtn.addEventListener('click', () => clearDue(index));
+    clearBtn.addEventListener('click', () => actionsFor.onClear());
     actions.appendChild(clearBtn);
   }
 
@@ -1805,17 +1845,20 @@ function labelledField(labelText, fieldEl) {
 // ---- 各种操作 ----
 // 约定：每个操作函数自己负责保存数据和重画界面，
 // 能失败的操作（比如名字为空）返回 true/false 表示做没做成
-function addTodo(category, text) {
+// due：新建时就带上截止时间和提醒（新建任务面板里用闹钟设的），不传就是没设
+function addTodo(category, text, due = {}) {
   const trimmed = text.trim();
   if (trimmed === '') return false;
+  const dueAt = due.dueAt || null;
 
   todos.push({
     text: trimmed,
     status: 'active',                   // active / done / abandoned
     category: category,
     createdAt: nowFn().toISOString(),   // 创建时把当前系统时间记下来
-    dueAt: null,                        // 截止时间，用户在详情页里设
-    remindBefore: null,                 // 提前多少分钟提醒，null = 不提醒
+    dueAt: dueAt,                       // 截止时间：新建时用闹钟设，或者以后在详情页里设
+    // 提前多少分钟提醒，null = 不提醒。没有截止时间就谈不上提醒。注意 0（准时提醒）也是设了
+    remindBefore: dueAt && due.remindBefore !== undefined ? due.remindBefore : null,
     reminded: false,                    // 这条的提醒是不是已经弹过了
     note: '',                           // 备注
     attachments: [],                    // 附件，只存 { id, name, type, size }
@@ -2014,12 +2057,23 @@ function renameTodo(index, newText) {
 
 // 保存截止时间和提醒设置。inputValue 来自 <input type="datetime-local">，
 // 形如 '2026-09-09T17:20'（本地时间）；remindValue 是分钟数的字符串，'' 表示不提醒
+// 把闹钟设置区里填的值变成要存的数据。没选日期返回 null（不保存）。
+// 详情页和新建任务面板共用，免得两边换算得不一样
+function parseDueInput(inputValue, remindValue) {
+  if (inputValue === '') return null;
+  return {
+    dueAt: new Date(inputValue).toISOString(),   // 不带时区的写法按本地时间解析，正是用户填的那个时间
+    remindBefore: remindValue === '' ? null : Number(remindValue)
+  };
+}
+
 function setDue(index, inputValue, remindValue) {
-  if (inputValue === '') return false;      // 没选日期就不保存
+  const parsed = parseDueInput(inputValue, remindValue);
+  if (!parsed) return false;      // 没选日期就不保存
 
   const todo = todos[index];
-  todo.dueAt = new Date(inputValue).toISOString();
-  todo.remindBefore = remindValue === '' ? null : Number(remindValue);
+  todo.dueAt = parsed.dueAt;
+  todo.remindBefore = parsed.remindBefore;
   todo.reminded = false;                    // 时间改了，之前提醒过也要重新算
 
   saveTodos();

@@ -94,6 +94,10 @@ function useStorage(fake) { storage = fake; }
   "今天"页混着不同清单的任务，传 `draggable: false, pinnable: false`（没有顺序可言、置顶说不清在哪置顶）。
   **一个按钮放在某个页面上会让人分不清它作用在哪时，就别在那个页面放。**
 - `createFab(label, onClick)` — 右下角浮着的蓝色圆形 + 按钮。`label` 给读屏软件用。页面上放了它，记得给这一页的容器加 `has-fab`（列表底部留空）。
+- `createDueButton(dueAt, remindBefore, onClick)` / `createDueEditor(dueAt, remindBefore, { onSave, onCancel, onClear })` — 闹钟和它下面的设置区。
+  **只管显示和收集输入，不管存到哪**：详情页存到任务上（`setDue`），新建任务面板存到草稿里，加任务时再带上。
+  一开始它们直接读写 `todos[index]`，要在还没有任务的新建面板里用时才改成这样——**组件要被第二个地方用的时候，先把"存到哪"拆出去**。
+  填的值怎么换算成数据统一走 `parseDueInput()`，免得两处算得不一样。
 - `createPopupCard({ title, body, onSubmit, onCancel })` — 新建面板的"壳"：暗色遮罩 + 靠上方的卡片 + 取消/创建。
   卡片里放什么由各页决定（清单：名字 + 单选标签；打卡：名字 + 多选标签）。**壳共用、内容各管各的**，这是判断"要不要抽组件"的好标准。
   面板里的输入框要边打字边把内容记进草稿（`input` 事件），因为点面板里的标签会整页重画。

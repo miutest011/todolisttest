@@ -709,7 +709,7 @@ const MUTATIONS = [
     group: '详情页：清单标签 + 闹钟；今天页不放置顶',
     name: '闹钟设了时间也不变红',
     file: 'app.js',
-    find: "btn.className = todo.dueAt ? 'due-btn has-due' : 'due-btn';",
+    find: "btn.className = dueAt ? 'due-btn has-due' : 'due-btn';",
     replace: "btn.className = 'due-btn';"
   },
   {
@@ -723,8 +723,8 @@ const MUTATIONS = [
     group: '详情页：清单标签 + 闹钟；今天页不放置顶',
     name: '提醒没合进闹钟（读屏软件听不到提醒方式）',
     file: 'app.js',
-    find: "const label = `截止 ${formatDateTime(todo.dueAt)}，${remindLabel(todo.remindBefore)}`;",
-    replace: "const label = `截止 ${formatDateTime(todo.dueAt)}`;"
+    find: "const label = `截止 ${formatDateTime(dueAt)}，${remindLabel(remindBefore)}`;",
+    replace: "const label = `截止 ${formatDateTime(dueAt)}`;"
   },
   {
     group: '详情页：清单标签 + 闹钟；今天页不放置顶',
@@ -760,6 +760,79 @@ const MUTATIONS = [
     file: 'style.css',
     find: "  .due-btn.has-due .due-icon {\n    color: var(--danger);",
     replace: "  .due-btn.has-due .due-icon {\n    color: var(--text-faint);"
+  },
+
+  // ---------- 新建任务面板：闹钟、不写"放进清单" ----------
+  {
+    group: '新建任务面板：闹钟、不写"放进清单"',
+    name: '新建任务面板又显示"放进清单"几个字',
+    file: 'app.js',
+    find: "  const body = [input, picker];",
+    replace: "  const label = document.createElement('div');\n  label.className = 'popup-label';\n  label.textContent = '放进清单';\n  const body = [input, label, picker];"
+  },
+  {
+    group: '新建任务面板：闹钟、不写"放进清单"',
+    name: '新建任务面板里没有闹钟',
+    file: 'app.js',
+    find: "  picker.appendChild(createDueButton(draft.dueAt, draft.remindBefore, () => {",
+    replace: "  (createDueButton(draft.dueAt, draft.remindBefore, () => {"
+  },
+  {
+    group: '新建任务面板：闹钟、不写"放进清单"',
+    name: '面板里设的时间没带到新任务上',
+    file: 'app.js',
+    find: "addTodo(draft.category, draft.text, { dueAt: draft.dueAt, remindBefore: draft.remindBefore });",
+    replace: "addTodo(draft.category, draft.text);"
+  },
+  {
+    group: '新建任务面板：闹钟、不写"放进清单"',
+    name: '新建时"准时提醒"（0）被当成没设提醒',
+    file: 'app.js',
+    find: "remindBefore: dueAt && due.remindBefore !== undefined ? due.remindBefore : null,",
+    replace: "remindBefore: dueAt && due.remindBefore ? due.remindBefore : null,"
+  },
+  {
+    group: '新建任务面板：闹钟、不写"放进清单"',
+    name: '面板里保存时间后设置区不收起',
+    file: 'app.js',
+    find: "        draft.remindBefore = parsed.remindBefore;\n        draft.editingDue = false;",
+    replace: "        draft.remindBefore = parsed.remindBefore;"
+  },
+  {
+    group: '新建任务面板：闹钟、不写"放进清单"',
+    name: '面板里设了提醒不申请通知权限',
+    file: 'app.js',
+    find: "        if (parsed.remindBefore !== null) ensureNotifyPermission();\n",
+    replace: ""
+  },
+  {
+    group: '新建任务面板：闹钟、不写"放进清单"',
+    name: '回车连续添加时，下一条带着上一条的时间',
+    file: 'app.js',
+    find: "    taskDraft = newTaskDraft(draft.category);",
+    replace: "    taskDraft = Object.assign(newTaskDraft(draft.category), { dueAt: draft.dueAt, remindBefore: draft.remindBefore });"
+  },
+  {
+    group: '新建任务面板：闹钟、不写"放进清单"',
+    name: '面板里点"清除"没清掉时间',
+    file: 'app.js',
+    find: "        draft.dueAt = null;\n        draft.remindBefore = null;",
+    replace: "        draft.remindBefore = null;"
+  },
+  {
+    group: '新建任务面板：闹钟、不写"放进清单"',
+    name: '选中的清单不是蓝底',
+    file: 'style.css',
+    find: "  .tag-option.selected {\n    color: var(--surface);\n    background: var(--accent);",
+    replace: "  .tag-option.selected {\n    color: var(--surface);\n    background: var(--surface);"
+  },
+
+  {
+    group: '新建任务面板：闹钟、不写"放进清单"',
+    name: '清单那一排贴着输入框（中间没留空）',
+    file: 'style.css',
+    find: "  .popup-card .add-input + .tag-picker {\n    margin-top: var(--space-3);",
+    replace: "  .popup-card .add-input + .tag-picker {\n    margin-top: 0;"
   },
 
   // ---------- 测试工具自己 ----------

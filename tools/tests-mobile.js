@@ -759,3 +759,160 @@ test('状态栏：固定在屏幕上的页面有白色底，而不是透明的',
   openLogsTab(root);
   check('打卡页');
 });
+
+
+// ========== 新建任务面板：闹钟 + 不写"放进清单" ==========
+
+// 在面板的闹钟设置区里填好时间、选好提醒，点保存
+function saveDueInPanel(root, localDateTime, remind) {
+  root.querySelector('.popup-card .due-input').value = localDateTime;
+  root.querySelector('.popup-card .remind-select').value = remind;
+  click([...root.querySelectorAll('.popup-card .due-editor button')].find((b) => b.textContent === '保存'));
+}
+
+// 明天某个时刻，写成 datetime-local 输入框要的样子（本地时间）
+function tomorrowAt(hhmm) {
+  const d = new Date(startOfToday() + 86400000);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${hhmm}`;
+}
+
+test('新建任务面板：不再写"放进清单"，清单直接列成一排，选中的是蓝底', async () => {
+  await useAppStyles();
+  const { root } = setup({ categories: ['工作', '生活'], expandedCategory: '生活' });
+
+  click(root.querySelector('.fab'));
+  assertEqual(root.querySelector('.popup-card').textContent.includes('放进清单'), false, '这几个字没必要，不显示');
+  assertEqual(root.querySelector('.popup-card .popup-label'), null, '面板里没有小标题');
+
+  const blue = 'rgb(74, 144, 226)';   // style.css 的 --accent
+  const bg = (name) => getComputedStyle([...root.querySelectorAll('.popup-card .list-option')].find((o) => o.textContent === name)).backgroundColor;
+  assertEqual(bg('生活'), blue, '选中的清单是蓝底');
+  assert(bg('工作') !== blue, '没选中的不是蓝底');
+});
+
+test('新建任务面板：清单那一排最后是闹钟，和详情页一样——没设时间是灰的、不写字', () => {
+  const { root } = setup({ categories: ['工作', '生活'], expandedCategory: '工作' });
+  click(root.querySelector('.fab'));
+
+  const row = root.querySelector('.popup-card .tag-picker');
+  const alarm = row.lastElementChild;
+  assert(alarm.classList.contains('due-btn'), '这一排最后一个是闹钟');
+  assert(alarm.querySelector('svg'), '画出来的闹钟图标');
+  assertEqual(alarm.classList.contains('has-due'), false, '没设时间，不是红的');
+  assertEqual(alarm.querySelector('.due-text'), null, '只有图标，不写字');
+  assertEqual(alarm.getAttribute('aria-label'), '设置截止时间和提醒', '读屏软件听到的也和详情页一样');
+});
+
+test('新建任务面板：点闹钟展开设置区，再点收起；设好保存后闹钟变红、写上时间，打的字和选的清单都不丢', () => {
+  const { root } = setup({ categories: ['工作', '生活'], expandedCategory: '工作' });
+  click(root.querySelector('.fab'));
+  typeTaskName(root, '交报告');
+  click([...root.querySelectorAll('.popup-card .list-option')].find((o) => o.textContent === '生活'));
+
+  click(root.querySelector('.popup-card .due-btn'));
+  assert(root.querySelector('.popup-card .due-editor'), '展开了设置区');
+  click(root.querySelector('.popup-card .due-btn'));
+  assertEqual(root.querySelector('.popup-card .due-editor'), null, '再点收起');
+
+  click(root.querySelector('.popup-card .due-btn'));
+  saveDueInPanel(root, tomorrowAt('18:30'), '60');
+
+  assertEqual(root.querySelector('.popup-card .due-editor'), null, '保存后收起');
+  const alarm = root.querySelector('.popup-card .due-btn');
+  assert(alarm.classList.contains('has-due'), '闹钟变红');
+  assertEqual(alarm.querySelector('.due-text').textContent, '明天 18:30', '写上时间');
+  assert(alarm.getAttribute('aria-label').includes('提前 1 小时'), '提醒方式在说明里');
+  assertEqual(root.querySelector('.popup-card .add-input').value, '交报告', '打的字不丢');
+  assertEqual(textsOf(root, '.popup-card .list-option.selected'), ['生活'], '选的清单不丢');
+  assertEqual(todos, [], '还没点添加，不该建出任务');
+});
+
+test('新建任务面板：加出来的任务带着设好的截止时间和提醒', () => {
+  const { root } = setup({ categories: ['工作'], expandedCategory: '工作' });
+  click(root.querySelector('.fab'));
+  typeTaskName(root, '交报告');
+  click(root.querySelector('.popup-card .due-btn'));
+  saveDueInPanel(root, tomorrowAt('09:00'), '0');   // 准时提醒：0 也算设了，别当成"没设"
+  click(root.querySelector('.popup-submit'));
+
+  assertEqual(todos.length, 1, '加进去了');
+  assertEqual(new Date(todos[0].dueAt).getTime(), new Date(tomorrowAt('09:00')).getTime(), '截止时间是填的那个（按本地时间）');
+  assertEqual(todos[0].remindBefore, 0, '准时提醒');
+  assertEqual(todos[0].reminded, false, '还没提醒过');
+
+  click(root.querySelector('.todo-item'));
+  assertEqual(root.querySelector('.detail-meta .due-text').textContent, '明天 09:00', '进详情页，闹钟上是同一个时间');
+});
+
+test('新建任务面板：没设时间加出来的任务没有截止时间', () => {
+  const { root } = setup({ categories: ['工作'], expandedCategory: '工作' });
+  click(root.querySelector('.fab'));
+  typeTaskName(root, '随手记');
+  click(root.querySelector('.popup-submit'));
+
+  assertEqual(pick(todos[0], ['dueAt', 'remindBefore']), { dueAt: null, remindBefore: null }, '什么都没设');
+});
+
+test('新建任务面板：设了提醒会申请通知权限（和详情页一样）', () => {
+  const { root } = setup({ categories: ['工作'], expandedCategory: '工作' });
+  let asked = 0;
+  useNotifier({ permission: () => 'default', request: () => { asked++; }, show: () => false });
+
+  click(root.querySelector('.fab'));
+  click(root.querySelector('.popup-card .due-btn'));
+  saveDueInPanel(root, tomorrowAt('09:00'), '');   // 不提醒
+  assertEqual(asked, 0, '没选提醒就不去打扰');
+
+  click(root.querySelector('.popup-card .due-btn'));
+  saveDueInPanel(root, tomorrowAt('09:00'), '30');
+  assertEqual(asked, 1, '选了提醒，趁用户刚点完保存去申请');
+});
+
+test('新建任务面板：没选日期点保存不保存；设过的可以清除', () => {
+  const { root } = setup({ categories: ['工作'], expandedCategory: '工作' });
+  click(root.querySelector('.fab'));
+  click(root.querySelector('.popup-card .due-btn'));
+
+  saveDueInPanel(root, '', '60');
+  assert(root.querySelector('.popup-card .due-editor'), '没选日期，设置区还开着');
+  assertEqual(root.querySelector('.popup-card .due-btn').classList.contains('has-due'), false, '闹钟还是灰的');
+
+  saveDueInPanel(root, tomorrowAt('09:00'), '60');
+  click(root.querySelector('.popup-card .due-btn'));
+  click([...root.querySelectorAll('.popup-card .due-editor button')].find((b) => b.textContent === '清除'));
+
+  assertEqual(root.querySelector('.popup-card .due-editor'), null, '清除后收起');
+  assertEqual(root.querySelector('.popup-card .due-btn').classList.contains('has-due'), false, '闹钟变回灰的');
+  typeTaskName(root, '写周报');
+  click(root.querySelector('.popup-submit'));
+  assertEqual(todos[0].dueAt, null, '清除了就不带时间');
+});
+
+test('新建任务面板：回车连续添加时，下一条的时间清空、清单保留', () => {
+  const { root } = setup({ categories: ['工作', '生活'], expandedCategory: '工作' });
+  click(root.querySelector('.fab'));
+  click([...root.querySelectorAll('.popup-card .list-option')].find((o) => o.textContent === '生活'));
+  click(root.querySelector('.popup-card .due-btn'));
+  saveDueInPanel(root, tomorrowAt('09:00'), '60');
+
+  press(typeTaskName(root, '第一条'), 'Enter');
+
+  assert(todos[0].dueAt, '第一条带着时间');
+  assertEqual(root.querySelector('.popup-card .due-btn').classList.contains('has-due'), false, '接着输的下一条，时间是空的');
+  assertEqual(textsOf(root, '.popup-card .list-option.selected'), ['生活'], '清单还是生活');
+
+  press(typeTaskName(root, '第二条'), 'Enter');
+  assertEqual(todos[1].dueAt, null, '第二条没有带上第一条的时间');
+});
+
+test('新建任务面板：清单那一排和上面的输入框之间留了空，没贴在一起', async () => {
+  await useAppStyles();
+  const { root } = setup({ categories: ['工作', '生活'], expandedCategory: '工作' });
+  click(root.querySelector('.fab'));
+
+  const inputBottom = root.querySelector('.popup-card .add-input').getBoundingClientRect().bottom;
+  const rowTop = root.querySelector('.popup-card .tag-picker').getBoundingClientRect().top;
+  // 真踩过：去掉"放进清单"那行字之后，原来靠它撑开的距离没了，一排清单直接贴在输入框底下
+  assert(rowTop - inputBottom >= 8, `中间至少留 8px，实际 ${Math.round(rowTop - inputBottom)}px`);
+});

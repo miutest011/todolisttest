@@ -956,6 +956,11 @@
     color: var(--text-subtle);
   }
 
+  /* 输入框下面直接跟着一排选项（新建任务面板没有小标题）时，中间留点空，别贴在一起 */
+  .popup-card .add-input + .tag-picker {
+    margin-top: var(--space-3);
+  }
+
   .popup-actions {
     display: flex;
     justify-content: flex-end;
