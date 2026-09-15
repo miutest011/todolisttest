@@ -93,11 +93,14 @@ test('新建按钮：列表底部留出了空，最后一项不会被它挡住',
   await useAppStyles();
   const { root } = setup({ categories: ['工作'], logItems: [logItem('喝水')] });
 
+  // 滚到最底时，列表最后一项的下边要能停在 + 按钮上面：
+  // 所以滚动区底部留出的空，至少要盖住"按钮顶边到屏幕底"这一整段（按钮、标签栏都在这一段里）
   const check = (label) => {
-    const view = root.querySelector('.fab').parentNode;
-    const padding = parseFloat(getComputedStyle(view).paddingBottom);
-    const fabHeight = root.querySelector('.fab').getBoundingClientRect().height;
-    assert(padding >= fabHeight, `${label}底部要留出至少一个按钮高的空（留了 ${padding}px，按钮 ${fabHeight}px）`);
+    const scroller = root.querySelector('.page-scroll');
+    const padding = parseFloat(getComputedStyle(scroller).paddingBottom);
+    const fabTop = root.querySelector('.fab').getBoundingClientRect().top;
+    const needed = window.innerHeight - fabTop;
+    assert(padding >= needed, `${label}底部要留出至少 ${needed}px（从按钮顶边到屏幕底），实际留了 ${padding}px`);
   };
 
   check('清单页');
@@ -222,9 +225,7 @@ test('防缩放：所有输入框字号都不小于 16px（小于 16px 时 iPhon
     });
   };
 
-  // 清单页：添加任务、清单改名、顶部新建标签、新建清单面板（名字 + 面板里新建标签）
-  click(root.querySelector('.add-task'));
-  checkAll('添加任务');
+  // 清单页：清单改名、顶部新建标签、新建任务面板、新建清单面板（名字 + 面板里新建标签）
   click(root.querySelector('.category-header .menu-btn'));
   click(menuItemNamed(root, '重命名'));
   checkAll('清单改名');
@@ -329,7 +330,9 @@ test('一次只展开一个清单：新建的清单直接展开，马上就能�
   addCategory('生活');
 
   assertEqual(expandedCategory, '生活', '新清单展开');
-  assert(root.querySelector('.category[data-category="生活"] .add-task'), '"+ 添加任务"就在眼前');
+  assertEqual(root.querySelector('.category[data-category="生活"] .category-header').getAttribute('aria-expanded'), 'true', '页面上也是展开的');
+  click(root.querySelector('.fab'));
+  assertEqual(textsOf(root, '.popup-card .list-option.selected'), ['生活'], '点右下角 + 就默认往新清单里加');
 });
 
 
@@ -362,13 +365,25 @@ test('拖任务到收起来的清单上：拖着经过时，占位行出现在�
   });
 
   const item = itemNamed(root, '写周报');
-  const target = headerOf(root, '生活').getBoundingClientRect();
+  const startY = item.getBoundingClientRect().top + 5;
   // 只按下、移动，先不松手 —— 松手之后再查就晚了（之前有过一条假测试就是这么来的）
-  item.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 50, clientY: item.getBoundingClientRect().top + 5 }));
-  document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 50, clientY: target.top + target.height / 2 }));
+  item.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 50, clientY: startY }));
+  // 先挪一小段让拖动开始，再去量目标清单现在在哪、移过去 —— 像真的手指一样一路挪过去。
+  // 不这么做的话：先量好目标位置、再一步跳过去，中间页面要是动了一下，指针就落空了
+  // （真踩过：整套测试一起跑时，目标清单在拖动开始后往上挪了 55px，指针落在了它下面）
+  document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 50, clientY: startY + MOVE_THRESHOLD + 2 }));
+  const target = headerOf(root, '生活').getBoundingClientRect();
+  const pointerY = target.top + target.height / 2;
+  document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 50, clientY: pointerY }));
 
   const placeholder = root.querySelector('.drag-source');
-  assert(placeholder && placeholder.closest('.category').dataset.category === '生活', '占位行应该挪到了生活这个清单里');
+  const landedIn = placeholder ? placeholder.closest('.category').dataset.category : '（没有占位行，拖动没开始）';
+  const nowTarget = headerOf(root, '生活').closest('.category').getBoundingClientRect();
+  assert(
+    landedIn === '生活',
+    `占位行应该挪到了生活这个清单里。实际落在：${landedIn}；指针 y=${Math.round(pointerY)}，` +
+    `现在生活清单的范围 ${Math.round(nowTarget.top)}~${Math.round(nowTarget.bottom)}，网页滚动 ${Math.round(window.scrollY)}`
+  );
   assert(placeholder.parentNode.classList.contains('collapsed-drop'), '落在收起清单的那个空列表里');
 
   document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
@@ -400,7 +415,7 @@ test('新建任务：默认放进展开着的清单，回车就加进去', () =>
 
   assertEqual(pick(todos[0], ['text', 'category', 'status']), { text: '买菜', category: '生活', status: 'active' }, '加进了生活');
   assertEqual(tasksIn(root, '生活'), ['买菜'], '页面上看得到');
-  assertEqual(root.querySelector('.popup-card'), null, '面板收起');
+  assert(root.querySelector('.popup-card'), '按回车加完面板还开着，接着加下一条（连续添加见 tests.js）');
 });
 
 test('新建任务：展开着的清单不在当前页面上时，默认放进页面上的第一个', () => {
@@ -550,13 +565,13 @@ test('打字时：从一个输入框跳到另一个输入框，中间不会把�
   assert(root.classList.contains('typing'), '到了新输入框，还是在打字');
 });
 
-test('打字时：输入框被重画删掉了（比如回车加完任务），typing 也要去掉，标签栏不能一直藏着', () => {
+test('打字时：输入框被重画删掉了（比如点"添加"加完任务），typing 也要去掉，标签栏不能一直藏着', () => {
   const { root } = setup({ categories: ['工作'], expandedCategory: '工作' });
   click(root.querySelector('.fab'));
   typeTaskName(root, '写周报');
   assert(root.classList.contains('typing'), '先确认在打字');
 
-  press(root.querySelector('.popup-card .add-input'), 'Enter');   // 面板收起，输入框没了
+  click(root.querySelector('.popup-submit'));   // 面板收起，输入框没了
 
   assertEqual(root.querySelector('.popup-card'), null, '面板收起了');
   assertEqual(root.classList.contains('typing'), false, '输入框都没了，标签栏要回来');
@@ -577,4 +592,117 @@ test('打字时：只在触屏设备上藏起标签栏、+ 按钮和撤销提示
 
   const topLevel = [...sheet.cssRules].filter((rule) => rule.selectorText);
   assertEqual(topLevel.some((rule) => rule.selectorText.includes('.typing')), false, '不能写在触屏判断外面，不然电脑上打字时标签栏也会消失');
+});
+
+
+// ========== 上面固定、下面自己滚 ==========
+
+test('页面骨架：清单页的标签行在固定的上半块，清单在下面自己滚的那块', () => {
+  const { root } = setup({ categories: ['工作'] });
+
+  const top = root.querySelector('.page-top');
+  const scroller = root.querySelector('.page-scroll');
+  assert(top && scroller, '清单页有上下两块');
+  assert(top.querySelector('.tag-row'), '标签行（连同右边的 ⋯）在上面');
+  assert(scroller.querySelector('#category-list'), '清单在下面');
+  assertEqual(top.querySelector('#category-list'), null, '清单不能跑到固定的那块里，不然滚不动');
+  assertEqual(scroller.querySelector('.tag-row'), null, '标签行不能在滚动的那块里，不然会跟着滚走');
+});
+
+test('页面骨架：打卡页的标题和标签行都固定在上面，打卡项目在下面滚', () => {
+  const { root } = setup({ logItems: [logItem('喝水')] });
+  openLogsTab(root);
+
+  const top = root.querySelector('.page-top');
+  const scroller = root.querySelector('.page-scroll');
+  assertEqual(top.querySelector('h1').textContent, '打卡', '标题在上面');
+  assert(top.querySelector('.tag-row'), '标签行在上面');
+  assert(scroller.querySelector('.log-item'), '打卡项目在下面');
+});
+
+test('页面骨架：往下滚时标签行一动不动，滚的只是清单那一块', async () => {
+  await useAppStyles();
+  const categories = Array.from({ length: 30 }, (_, i) => '清单' + (i + 1));
+  const { root } = setup({ categories: categories });
+  // 测试页自己很长，整个网页可能在滚；测完滚回去
+  const pageScroll = window.scrollY;
+  onCleanup(() => window.scrollTo(0, pageScroll));
+
+  const scroller = root.querySelector('.page-scroll');
+  const tagRow = root.querySelector('.tag-row');
+  const firstHeader = root.querySelector('.category-header');
+  assert(scroller.scrollHeight > scroller.clientHeight, '30 个清单应该放不下，得滚');
+
+  const tagTop = tagRow.getBoundingClientRect().top;
+  const headerTop = firstHeader.getBoundingClientRect().top;
+
+  scroller.scrollTop = 300;
+  window.scrollTo(0, 400);    // 整个网页也滚一下：页面钉在屏幕上，不该受影响
+
+  assert(scroller.scrollTop > 0, '清单那一块确实滚了');
+  assertEqual(tagRow.getBoundingClientRect().top, tagTop, '标签行不跟着滚');
+  assert(firstHeader.getBoundingClientRect().top < headerTop, '清单跟着滚上去了');
+});
+
+test('页面骨架：滚动条藏起来了（电脑和 iPhone 两种写法都有）', async () => {
+  await useAppStyles();
+  const { root } = setup({ categories: ['工作'] });
+
+  const scroller = root.querySelector('.page-scroll');
+  assertEqual(getComputedStyle(scroller).scrollbarWidth, 'none', '电脑、安卓上的写法：scrollbar-width: none');
+
+  const sheet = [...document.styleSheets].find((s) => s.ownerNode && s.ownerNode.textContent.includes('--text-input'));
+  const webkitRule = [...sheet.cssRules].find((rule) => rule.selectorText && rule.selectorText.includes('.page-scroll::-webkit-scrollbar'));
+  assert(webkitRule && webkitRule.style.display === 'none', 'iPhone 的 Safari 要靠 ::-webkit-scrollbar { display: none }');
+});
+
+test('页面骨架：拖着东西到屏幕底边，自动往下滚的是清单那一块', async () => {
+  await useAppStyles();
+  const categories = Array.from({ length: 30 }, (_, i) => '清单' + (i + 1));
+  const { root } = setup({ categories: categories });
+  const scroller = root.querySelector('.page-scroll');
+
+  autoScroll(window.innerHeight - 5);   // 指针贴着屏幕底边
+
+  assert(scroller.scrollTop > 0, '整个网页是钉住的，得滚清单那一块，不然拖到边上就再也滚不动了');
+});
+
+test('新建任务：点"添加"按钮加完就收起（回车才是连续添加）', () => {
+  const { root } = setup({ categories: ['工作'], expandedCategory: '工作' });
+
+  click(root.querySelector('.fab'));
+  // 用 typeTaskName：它会发 input 事件，面板才知道打了什么（光改 value 的话面板以为名字是空的）
+  typeTaskName(root, '写周报');
+  click(root.querySelector('.popup-submit'));
+
+  assertEqual(todos.map((t) => t.text), ['写周报'], '加进去了');
+  assertEqual(root.querySelector('.popup-card'), null, '点按钮加完收起');
+});
+
+// 在指定宽度的小窗口里套上 App 的样式，量某个元素最后算出来的样式。
+// 测试页是电脑宽度，"手机上才生效"的规则（@media max-width）在测试页里量不出来，得开个手机那么宽的窗口
+async function styleAtWidth(width, html, selector) {
+  const css = await fetch('../style.css?t=' + Date.now()).then((response) => response.text());
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = `position:fixed;left:-10000px;top:0;width:${width}px;height:812px;border:0;`;
+  document.body.appendChild(iframe);
+  onCleanup(() => iframe.remove());
+  const doc = iframe.contentDocument;
+  doc.open();
+  doc.write('<!DOCTYPE html><html><head><style>' + css + '</style></head><body>' + html + '</body></html>');
+  doc.close();
+  return iframe.contentWindow.getComputedStyle(doc.querySelector(selector));
+}
+
+test('页面骨架：手机那么宽时顶部只留 24px，电脑上才留 60px', async () => {
+  if (location.protocol === 'file:') {
+    skip('要读 style.css，需要用 python3 tools/dev-server.py 打开测试页');
+  }
+
+  const phone = await styleAtWidth(375, '<div class="page"></div>', '.page');
+  const desktop = await styleAtWidth(900, '<div class="page"></div>', '.page');
+
+  // 真踩过：手机专用的那条写在了基础规则前面，被后面的 60px 盖掉，标签行上面空了一大块
+  assertEqual(phone.paddingTop, '24px', '手机上只让出状态栏的位置（没有刘海时就是 24px）');
+  assertEqual(desktop.paddingTop, '60px', '电脑上和 body 的上边距一样');
 });

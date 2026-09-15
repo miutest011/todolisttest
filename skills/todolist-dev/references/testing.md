@@ -197,6 +197,12 @@ assertEqual(countLogsByDay(logItems[0])['2026-09-06'], 2, '两次都该算在 9 
 
 ## 测"长什么样、在哪里"
 
+**手机专用的样式（`@media (max-width: …)`）在测试页里量不出来**：测试页是电脑宽度，那些规则本来就不生效。
+要开一个手机那么宽的小窗口，把 App 的样式放进去量——`tests-mobile.js` 里的 `styleAtWidth(宽度, html, 选择器)`。
+
+**拖拽测试要像真的手指一样一路挪过去**：先挪一小段让拖动开始，再量目标现在在哪、移过去。
+先量好位置再一步跳过去，中间页面动一下指针就落空了（真踩过，整套一起跑时才出现）。失败信息里带上坐标，出问题时直接能看到数字。
+
 测试页平时不加载 `style.css`，所以位置、字号、`touch-action` 这类检查要用 `tests-mobile.js` 里的 `useAppStyles()`：
 它临时加载 App 的样式，**同时关掉测试页自己的样式**（`test.html` 有 `button { margin-bottom: 20px }`，会把 App 的按钮顶偏，量出假 bug）。
 

@@ -104,7 +104,6 @@ let listTags = [];          // 清单页自己的标签 [{ id, name }]，和打�
 // 只记"有标签或已归档"的清单，没记的就是默认值（不在标签下、没归档）。
 // 注意这里是按清单名字记的（和任务、折叠状态一样），所以清单改名时要跟着改
 let categoryMeta = {};
-let addingTaskIn = null;    // 正在哪个清单里输入新任务
 let categoryDraft = null;   // 正在新建的清单 { name, tagId }，null = 新建面板没打开
 let taskDraft = null;       // 正在新建的任务 { text, category }，null = 新建任务面板没打开
 let editingTaskIndex = null;// 正在重命名的任务（它在 todos 里的位置）
@@ -120,7 +119,6 @@ let listTagFilter = 'all';  // 清单页顶部选中了哪个：'all'（所有�
 
 // 把"临时"的界面状态清空（数据状态不动）
 function resetViewState() {
-  addingTaskIn = null;
   categoryDraft = null;
   taskDraft = null;
   editingTaskIndex = null;
@@ -397,10 +395,18 @@ function findDropTarget(container, pointerY, dragging) {
 
 // 拖到屏幕上下边缘时自动滚动，否则长列表根本拖不到远处
 function autoScroll(pointerY) {
-  if (pointerY < EDGE_SIZE) {
-    window.scrollBy(0, -EDGE_SPEED);
-  } else if (pointerY > window.innerHeight - EDGE_SIZE) {
-    window.scrollBy(0, EDGE_SPEED);
+  let step = 0;
+  if (pointerY < EDGE_SIZE) step = -EDGE_SPEED;
+  else if (pointerY > window.innerHeight - EDGE_SIZE) step = EDGE_SPEED;
+  if (step === 0) return;
+
+  // 清单页、打卡页上整个网页是不动的，滚的是下面那一块（见 createScrollingPage）。
+  // 还去滚整个网页的话，拖到屏幕边上就再也滚不动了
+  const scroller = appEl && appEl.querySelector('.page-scroll');
+  if (scroller) {
+    scroller.scrollTop += step;
+  } else {
+    window.scrollBy(0, step);
   }
 }
 
@@ -585,7 +591,7 @@ function createTabBar() {
 // 这一页不放大标题：点进 App 之前就知道这是待办清单了，
 // 再写一遍"我的待办清单"只是白占地方
 function createTasksView() {
-  const view = document.createElement('div');
+  const { page: view, top, body } = createScrollingPage('tasks-view');
 
   // 选中的标签万一已经不在了，退回"所有"，别停在一个看不见的筛选上
   if (listTagFilter !== 'all' && listTagFilter !== 'archived' && !findListTag(listTagFilter)) {
@@ -594,7 +600,7 @@ function createTasksView() {
 
   // 顶部标签行（和打卡页共用，在 tags.js 里）
   // 标签行右边放一个 ⋯："新建清单"一年也用不了几次，不值得占着右下角那个最显眼的位置
-  view.appendChild(createTagBar(listTagSet, {
+  top.appendChild(createTagBar(listTagSet, {
     key: 'page-lists',
     items: [{ text: '新建清单', action: openCategoryDraft }]
   }));
@@ -605,7 +611,7 @@ function createTasksView() {
     const empty = document.createElement('div');
     empty.className = 'empty-state';
     empty.textContent = message;
-    view.appendChild(empty);
+    body.appendChild(empty);
   }
 
   // 清单单独放一个容器里，拖拽排序时要靠它来算位置
@@ -615,7 +621,7 @@ function createTasksView() {
     categoryList.appendChild(createCategorySection(category));
   });
 
-  view.appendChild(categoryList);
+  body.appendChild(categoryList);
   // 右下角的 + 是"新建任务"：这一页上最常做的事。
   // "已归档"下面不给：任务只能放进没归档的清单，建完不会出现在这一页。
   // 一个没归档的清单都没有时也不给：任务总得放进某个清单里
@@ -756,7 +762,7 @@ function createTaskDraftPanel() {
   input.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
       draft.text = input.value;
-      submitTaskDraft();
+      submitTaskDraft(true);     // 回车：加完留着面板，接着输下一条
     } else if (event.key === 'Escape') {
       cancelTaskDraft();
     }
@@ -785,12 +791,17 @@ function createTaskDraftPanel() {
     title: '新建任务',
     body: [input, label, picker],
     submitText: '添加',
-    onSubmit: submitTaskDraft,
+    // 包一层再传：点击时浏览器会把"点击事件"塞给第一个参数，直接传 submitTaskDraft 的话，
+    // keepOpen 就成了那个事件（算"真"），点"添加"也不收起了
+    onSubmit: () => submitTaskDraft(false),
     onCancel: cancelTaskDraft
   });
 }
 
-function submitTaskDraft() {
+// keepOpen 为 true（按回车）时，加完留着面板、清空名字，方便一口气加好几条 ——
+// 原来清单底下的"+ 添加任务"就是这样用的，去掉它之后这个本事不能丢。
+// 点"添加"按钮时加完就收起；空着按回车 = 加完了，也收起
+function submitTaskDraft(keepOpen) {
   const draft = taskDraft;
   taskDraft = null;
 
@@ -806,6 +817,9 @@ function submitTaskDraft() {
   saveExpandedCategory();
   if (!categoriesInFilter(listTagFilter).includes(draft.category)) {
     listTagFilter = 'all';
+  }
+  if (keepOpen) {
+    taskDraft = { text: '', category: draft.category };   // 还放进同一个清单
   }
   addTodo(draft.category, draft.text);
 }
@@ -935,7 +949,7 @@ function createCategorySection(category) {
       .forEach((item) => list.appendChild(createTodoItem(item.todo, item.index)));
 
     section.appendChild(list);
-    section.appendChild(createAddTaskRow(category));
+    // 清单底下原来有一行"+ 添加任务"，和右下角的 + 重复了，去掉。新建任务一律走右下角的 +
     section.appendChild(createSubGroup(category, 'done', '已完成',
       items.filter((item) => item.todo.status === 'done')));
     section.appendChild(createSubGroup(category, 'abandoned', '已放弃',
@@ -1176,53 +1190,6 @@ function createCheckbox(todo, index) {
   return checkbox;
 }
 
-// 没在输入时是一行灰色的"+ 添加任务"，点了之后变成输入框
-function createAddTaskRow(category) {
-  if (addingTaskIn !== category) {
-    const row = document.createElement('div');
-    row.className = 'add-task';
-    row.textContent = '+ 添加任务';
-    row.addEventListener('click', () => {
-      if (closeMenuIfOpen()) return;
-      addingTaskIn = category;
-      render();
-    });
-    return row;
-  }
-
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.className = 'add-input';
-  input.placeholder = '输入任务，回车添加';
-
-  // render() 会把输入框删掉重画，删除时浏览器也会触发一次 blur，
-  // 这个开关用来区分"用户点到别处了"和"是我们自己重画导致的"
-  let skipBlur = false;
-
-  input.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') {
-      skipBlur = true;
-      // 加成功了就保持输入框打开，方便连续添加；空着按回车就结束添加
-      if (!addTodo(category, input.value)) {
-        addingTaskIn = null;
-        render();
-      }
-    } else if (event.key === 'Escape') {
-      skipBlur = true;
-      addingTaskIn = null;
-      render();
-    }
-  });
-
-  input.addEventListener('blur', () => {
-    if (skipBlur) return;
-    addingTaskIn = null;
-    render();
-  });
-
-  return input;
-}
-
 // 重命名用的输入框：回车保存、Esc 取消、点到别处也算保存。清单和任务共用。
 // finished 保证只结束一次：回车结束后页面会重画、输入框被删掉，
 // 浏览器还会再触发一次 blur，这时候要忽略掉
@@ -1278,6 +1245,26 @@ function createPageHeader(onBack, menu) {
   }
 
   return header;
+}
+
+// ---- 清单页、打卡页共用的页面骨架：上面固定，下面自己滚 ----
+// 为什么不让整个网页一起滚：那样标签行会跟着滚走，右边还会冒出网页的滚动条，
+// 滑到头时整页还会弹一下 —— 一看就是网页，不像 App。
+// 所以整个页面钉在屏幕上不动（样式在 style.css 的 .page），只让下面装列表的那一块自己滚，并且把滚动条藏起来。
+//
+// 返回 { page, top, body }：标题、标签行放进 top，列表放进 body；右下角的 + 和新建面板放进 page
+function createScrollingPage(className) {
+  const page = document.createElement('div');
+  page.className = className ? 'page ' + className : 'page';
+
+  const top = document.createElement('div');
+  top.className = 'page-top';
+
+  const body = document.createElement('div');
+  body.className = 'page-scroll';
+
+  page.append(top, body);
+  return { page: page, top: top, body: body };
 }
 
 // ---- 右下角悬浮的新建按钮 ----
@@ -1930,7 +1917,6 @@ function archiveCategory(category) {
   if (!categories.includes(category) || isCategoryArchived(category)) return false;
 
   setCategoryMeta(category, null, true);
-  if (addingTaskIn === category) addingTaskIn = null;
   saveCategoryMeta();
   render();
   return true;
@@ -2270,7 +2256,6 @@ function deleteCategory(category) {
   if (expandedCategory === category) expandedCategory = null;
   delete categoryMeta[category];  // 不删的话，以后再建个同名清单会莫名其妙出现在某个标签下
   deleteAttachmentsOf(removed);   // 连带删掉这些任务的附件文件
-  if (addingTaskIn === category) addingTaskIn = null;
   if (editingCategory === category) editingCategory = null;
 
   saveCategories();

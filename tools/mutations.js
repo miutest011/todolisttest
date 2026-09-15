@@ -242,8 +242,8 @@ const MUTATIONS = [
     group: '清单标签',
     name: '归档清单时不拿掉标签',
     file: 'app.js',
-    find: '  setCategoryMeta(category, null, true);\n  if (addingTaskIn',
-    replace: '  setCategoryMeta(category, categoryTagOf(category), true);\n  if (addingTaskIn'
+    find: '  setCategoryMeta(category, null, true);\n  saveCategoryMeta();',
+    replace: '  setCategoryMeta(category, categoryTagOf(category), true);\n  saveCategoryMeta();'
   },
   {
     group: '清单标签',
@@ -370,8 +370,8 @@ const MUTATIONS = [
     group: '新建按钮与防缩放',
     name: '重置时漏掉新建清单的面板',
     file: 'app.js',
-    find: '  addingTaskIn = null;\n  categoryDraft = null;\n',
-    replace: '  addingTaskIn = null;\n'
+    find: '  categoryDraft = null;\n  taskDraft = null;\n',
+    replace: '  taskDraft = null;\n'
   },
   {
     group: '新建按钮与防缩放',
@@ -585,6 +585,87 @@ const MUTATIONS = [
     file: 'app.js',
     find: "  header.setAttribute('role', 'button');\n",
     replace: "  header.setAttribute('role', 'button');\n  const arrow = document.createElement('span');\n  arrow.className = 'arrow';\n  arrow.textContent = isCollapsed(category) ? '▸' : '▾';\n  header.appendChild(arrow);\n"
+  },
+
+  {
+    group: '清单页：展开、新建任务、打字',
+    name: '按回车加完任务就收起（不能连续添加了）',
+    file: 'app.js',
+    find: "    taskDraft = { text: '', category: draft.category };   // 还放进同一个清单",
+    replace: "    taskDraft = null;"
+  },
+  {
+    group: '清单页：展开、新建任务、打字',
+    name: '点"添加"按钮加完也不收起（点击事件被当成了"留着面板"）',
+    file: 'app.js',
+    find: "    onSubmit: () => submitTaskDraft(false),",
+    replace: "    onSubmit: submitTaskDraft,"
+  },
+  {
+    group: '清单页：展开、新建任务、打字',
+    name: '清单底下又出现了"+ 添加任务"',
+    file: 'app.js',
+    find: "    section.appendChild(list);\n",
+    replace: "    section.appendChild(list);\n    const addRow = document.createElement('div');\n    addRow.className = 'add-task';\n    addRow.textContent = '+ 添加任务';\n    section.appendChild(addRow);\n"
+  },
+
+  // ---------- 清单页、打卡页：上面固定、下面自己滚 ----------
+  {
+    group: '清单页、打卡页：上面固定、下面自己滚',
+    name: '清单页的标签行放进了会滚的那块（跟着滚走）',
+    file: 'app.js',
+    find: "  top.appendChild(createTagBar(listTagSet, {",
+    replace: "  body.appendChild(createTagBar(listTagSet, {"
+  },
+  {
+    group: '清单页、打卡页：上面固定、下面自己滚',
+    name: '打卡页的标题放进了会滚的那块',
+    file: 'logs.js',
+    find: "  top.appendChild(title);",
+    replace: "  body.appendChild(title);"
+  },
+  {
+    group: '清单页、打卡页：上面固定、下面自己滚',
+    name: '拖到屏幕边上时还去滚整个网页（清单那块滚不动）',
+    file: 'app.js',
+    find: "  if (scroller) {\n    scroller.scrollTop += step;",
+    replace: "  if (false) {\n    scroller.scrollTop += step;"
+  },
+  {
+    group: '清单页、打卡页：上面固定、下面自己滚',
+    name: '页面没钉在屏幕上（整个网页一起滚，标签行跟着走）',
+    file: 'style.css',
+    find: "  .page {\n    position: fixed;",
+    replace: "  .page {\n    position: static;"
+  },
+  {
+    group: '清单页、打卡页：上面固定、下面自己滚',
+    name: '滚动条没藏（电脑、安卓）',
+    file: 'style.css',
+    find: "    scrollbar-width: none;             /* 藏滚动条（电脑、安卓） */",
+    replace: "    scrollbar-width: auto;"
+  },
+  {
+    group: '清单页、打卡页：上面固定、下面自己滚',
+    name: '滚动条没藏（iPhone）',
+    file: 'style.css',
+    find: "  .page-scroll::-webkit-scrollbar {\n    display: none;",
+    replace: "  .page-scroll::-webkit-scrollbar {\n    display: block;"
+  },
+  {
+    group: '清单页、打卡页：上面固定、下面自己滚',
+    name: '有 + 按钮的页面，列表底部没多留空（最后一项被挡住）',
+    file: 'style.css',
+    find: "    padding-bottom: calc(80px + 72px + env(safe-area-inset-bottom));",
+    replace: "    padding-bottom: calc(80px + env(safe-area-inset-bottom));"
+  },
+
+  {
+    group: '清单页、打卡页：上面固定、下面自己滚',
+    name: '手机上顶部留白的规则没生效（标签行上面空一大块）',
+    file: 'style.css',
+    find: "  @media (max-width: 600px) {\n    .page {\n      padding-top: max(var(--space-6), env(safe-area-inset-top));",
+    replace: "  @media (max-width: 600px) {\n    .page-never {\n      padding-top: max(var(--space-6), env(safe-area-inset-top));"
   },
 
   // ---------- 测试工具自己 ----------

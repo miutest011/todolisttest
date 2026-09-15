@@ -616,22 +616,37 @@ test('交互：任务改名仍然可以从 ⋯ 菜单进入', () => {
   assertEqual(todos[0].text, '开周会', '应该改名成功');
 });
 
-test('交互：连续添加任务时输入框会保持打开', () => {
-  const { root } = setup({ categories: ['工作'] });
+test('交互：连续添加任务 —— 在新建任务面板里按回车，加完面板还开着，接着输下一条', () => {
+  // 以前靠清单底下的"+ 添加任务"连续加；那一行去掉后，这个本事搬到了右下角 + 的面板里
+  const { root } = setup({ categories: ['工作', '生活'], expandedCategory: '生活' });
 
-  click(root.querySelector('.add-task'));
-  const input = root.querySelector('.add-input');
-  assert(input, '点了"+ 添加任务"应该出现输入框');
-
+  click(root.querySelector('.fab'));
+  const input = root.querySelector('.popup-card .add-input');
   typeInto(input, '第一条');
   press(input, 'Enter');
 
-  assertEqual(todos.length, 1, '任务应该被添加');
-  assert(root.querySelector('.add-input'), '加完一条后输入框应该还在，方便继续输入');
+  assertEqual(todos.map((t) => t.text), ['第一条'], '任务应该被添加');
+  const again = root.querySelector('.popup-card .add-input');
+  assert(again, '加完一条后面板应该还在，方便继续输入');
+  assertEqual(again.value, '', '名字清空了，直接输下一条');
+  assert(document.activeElement === again, '光标还在输入框里，键盘不用重新弹');
+  assertEqual(textsOf(root, '.popup-card .list-option.selected'), ['生活'], '还放进同一个清单');
 
-  // 空着回车 = 结束添加
-  press(root.querySelector('.add-input'), 'Enter');
-  assertEqual(root.querySelector('.add-input'), null, '空着回车应该结束添加');
+  typeInto(again, '第二条');
+  press(again, 'Enter');
+  assertEqual(todos.map((t) => [t.text, t.category]), [['第一条', '生活'], ['第二条', '生活']], '第二条也加进了生活');
+
+  // 空着回车 = 加完了
+  press(root.querySelector('.popup-card .add-input'), 'Enter');
+  assertEqual(root.querySelector('.popup-card'), null, '空着回车应该结束添加');
+  assertEqual(todos.length, 2, '空着回车不会加一条空任务');
+});
+
+test('交互：清单底下不再有"+ 添加任务"（和右下角的 + 重复了）', () => {
+  const { root } = setup({ categories: ['工作'], expandedCategory: '工作' });
+
+  assert(root.querySelector('.category[data-category="工作"] ul'), '先确认工作是展开着的');
+  assertEqual(root.querySelector('.add-task'), null, '展开的清单底下没有"+ 添加任务"');
 });
 
 

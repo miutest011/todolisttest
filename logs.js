@@ -416,31 +416,31 @@ function openLogDetail(id) {
 
 // ---- "打卡"标签页 ----
 function createLogsView() {
-  const view = document.createElement('div');
-  view.className = 'logs-view';
+  // 标题和标签行固定在上面，下面的打卡项目自己滚（骨架在 app.js 的 createScrollingPage）
+  const { page: view, top, body } = createScrollingPage('logs-view');
 
   const title = document.createElement('h1');
   title.textContent = '打卡';
-  view.appendChild(title);
+  top.appendChild(title);
 
   // 选中的标签万一已经不在了，退回"所有"，别停在一个看不见的筛选上
   if (logTagFilter !== 'all' && logTagFilter !== 'archived' && !findLogTag(logTagFilter)) {
     logTagFilter = 'all';
   }
 
-  view.appendChild(createTagBar(logTagSet));
+  top.appendChild(createTagBar(logTagSet));
 
   const items = logItemsInFilter(logTagFilter);
   if (items.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'empty-state';
     empty.textContent = logEmptyMessage();
-    view.appendChild(empty);
+    body.appendChild(empty);
   }
 
   const list = document.createElement('ul');
   items.forEach((item) => list.appendChild(createLogItemRow(item)));
-  view.appendChild(list);
+  body.appendChild(list);
 
   // "已归档"下面不给新增入口：新建的项目不是归档状态，建完会立刻从这一页消失
   if (logTagFilter !== 'archived') {

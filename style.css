@@ -796,19 +796,6 @@
     background: none;
   }
 
-  .add-task {
-    padding: var(--space-3);
-    font-size: var(--text-base);
-    color: var(--text-faint);
-    border-radius: var(--radius-lg);
-    cursor: pointer;
-  }
-
-  .add-task:hover {
-    color: var(--accent);
-    background: var(--surface-sunken);
-  }
-
   .add-input {
     width: 100%;
     box-sizing: border-box;
@@ -851,10 +838,60 @@
     height: 26px;
   }
 
-  /* 有 + 按钮的页面，列表底部多留一截，不然最后一项右边的 ⋯ 或大数字会被按钮挡住。
-     这个高度 = 按钮 56px + 上下留白，改按钮大小时要跟着改 */
-  .has-fab {
-    padding-bottom: 72px;
+  /* ---- 清单页、打卡页的骨架：整页钉在屏幕上，只有下面装列表的那一块自己滚 ----
+     整个网页一起滚的话，标签行会跟着滚走、右边冒出滚动条、滑到头整页弹一下，一看就是网页。
+     结构见 app.js 的 createScrollingPage */
+  .page {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    max-width: 480px;                  /* 和 body 一样宽，电脑上居中 */
+    margin: 0 auto;
+    padding-top: 60px;                 /* 和 body 的上边距一样；手机上见紧跟着的 @media */
+  }
+
+  /* 手机上顶部少留点白，只让出刘海和状态栏的位置（和 body 在手机上的上边距一致）。
+     这条必须写在上面 .page 的后面：两条一样"具体"时，写在后面的赢。
+     真踩过：一开始把它放进了文件开头那段"手机上的调整"里，结果被后面的 60px 盖掉，标签行上面空了一大块 */
+  @media (max-width: 600px) {
+    .page {
+      padding-top: max(var(--space-6), env(safe-area-inset-top));
+    }
+  }
+
+  /* 上面固定的那块：标题、标签行 */
+  .page-top {
+    flex-shrink: 0;
+    position: relative;
+    z-index: 2;                        /* 标签行右边 ⋯ 的下拉菜单要盖在下面的列表上 */
+    padding: 0 var(--space-4);
+  }
+
+  /* 下面自己滚的那块 */
+  .page-scroll {
+    flex: 1;
+    min-height: 0;                     /* 不写这个，内容多了会把这块撑高，而不是在里面滚 */
+    overflow-y: auto;
+    overscroll-behavior: contain;      /* 滑到头时别带着整个网页一起弹 */
+    /* 左右留白放在滚动区里面，卡片的阴影才不会被滚动区的边切掉；
+       底部让出标签栏的位置（80px，和 body 的 padding-bottom 一样），不然最后一项会被盖住 */
+    padding: 0 var(--space-4) calc(80px + env(safe-area-inset-bottom));
+    scrollbar-width: none;             /* 藏滚动条（电脑、安卓） */
+  }
+
+  .page-scroll::-webkit-scrollbar {
+    display: none;                     /* 藏滚动条（iPhone 上的 Safari 认这个） */
+  }
+
+  /* 有 + 按钮的页面，底部再多留一截，不然最后一项右边的 ⋯ 或大数字会被按钮挡住。
+     72px = 按钮 56px + 上下留白，改按钮大小时要跟着改 */
+  .has-fab .page-scroll {
+    padding-bottom: calc(80px + 72px + env(safe-area-inset-bottom));
   }
 
   /* 打卡后的"撤销"提示原本在标签栏上方，和 + 按钮差不多高。
