@@ -690,6 +690,78 @@ const MUTATIONS = [
     replace: "    top: 0;"
   },
 
+  // ---------- 详情页：清单标签 + 闹钟；今天页不放置顶 ----------
+  {
+    group: '详情页：清单标签 + 闹钟；今天页不放置顶',
+    name: '今天页的任务又带上了置顶按钮',
+    file: 'app.js',
+    find: "{ draggable: false, pinnable: false }",
+    replace: "{ draggable: false }"
+  },
+  {
+    group: '详情页：清单标签 + 闹钟；今天页不放置顶',
+    name: '详情页卡片里又出现了置顶按钮',
+    file: 'app.js',
+    find: "    card.appendChild(title);\n    // 详情页不放置顶按钮",
+    replace: "    card.appendChild(title);\n    card.appendChild(createPinButton(index));\n    // 详情页不放置顶按钮"
+  },
+  {
+    group: '详情页：清单标签 + 闹钟；今天页不放置顶',
+    name: '闹钟设了时间也不变红',
+    file: 'app.js',
+    find: "btn.className = todo.dueAt ? 'due-btn has-due' : 'due-btn';",
+    replace: "btn.className = 'due-btn';"
+  },
+  {
+    group: '详情页：清单标签 + 闹钟；今天页不放置顶',
+    name: '闹钟旁边不写时间',
+    file: 'app.js',
+    find: "    btn.appendChild(time);\n",
+    replace: ""
+  },
+  {
+    group: '详情页：清单标签 + 闹钟；今天页不放置顶',
+    name: '提醒没合进闹钟（读屏软件听不到提醒方式）',
+    file: 'app.js',
+    find: "const label = `截止 ${formatDateTime(todo.dueAt)}，${remindLabel(todo.remindBefore)}`;",
+    replace: "const label = `截止 ${formatDateTime(todo.dueAt)}`;"
+  },
+  {
+    group: '详情页：清单标签 + 闹钟；今天页不放置顶',
+    name: '再点一次闹钟不收起编辑区',
+    file: 'app.js',
+    find: "editingDueFor = editingDueFor === index ? null : index;",
+    replace: "editingDueFor = index;"
+  },
+  {
+    group: '详情页：清单标签 + 闹钟；今天页不放置顶',
+    name: '闹钟的"今天 / 明天"按 UTC 日期算（晚上的时间会算错天）',
+    file: 'app.js',
+    find: "new Date(due.getFullYear(), due.getMonth(), due.getDate()).getTime()",
+    replace: "new Date(isoText.slice(0, 10)).getTime()"
+  },
+  {
+    group: '详情页：清单标签 + 闹钟；今天页不放置顶',
+    name: '不是今年的时间不带年份',
+    file: 'app.js',
+    find: "return sameYear ? `${date} ${time}` : `${due.getFullYear()}年${date} ${time}`;",
+    replace: "return `${date} ${time}`;"
+  },
+  {
+    group: '详情页：清单标签 + 闹钟；今天页不放置顶',
+    name: '清单标签不是虚线框',
+    file: 'style.css',
+    find: "    border: 1px dashed var(--border);",
+    replace: "    border: 1px solid var(--border);"
+  },
+  {
+    group: '详情页：清单标签 + 闹钟；今天页不放置顶',
+    name: '闹钟设了时间，图标还是灰的',
+    file: 'style.css',
+    find: "  .due-btn.has-due .due-icon {\n    color: var(--danger);",
+    replace: "  .due-btn.has-due .due-icon {\n    color: var(--text-faint);"
+  },
+
   // ---------- 测试工具自己 ----------
   {
     group: '测试工具',

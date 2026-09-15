@@ -140,11 +140,6 @@ function groupHeader(root, label) {
 
 // 按左边的标签取详情页某一行的内容。
 // 别用"第几行"去取 —— 加一行新字段就会把测试全打乱
-function detailValue(root, label) {
-  const row = [...root.querySelectorAll('.detail-row')]
-    .find((el) => el.querySelector('.detail-label').textContent === label);
-  return row ? row.querySelector('.detail-value').textContent : null;
-}
 
 function stored(storage, key) {
   const value = storage.getItem(key);
@@ -754,24 +749,14 @@ test('开始时间：创建任务时自动记录当前时间', () => {
   assertEqual(todos[0].remindBefore, null, '初始应该是不提醒');
 });
 
-test('开始时间：只在详情页显示，列表页不显示', () => {
+test('开始时间：照样记着，但列表页和详情页都不显示（用户觉得没必要）', () => {
   const { root } = setup({ categories: ['工作'] });
   addTodo('工作', '写周报');
-
-  assertEqual(root.querySelectorAll('.detail-row').length, 0, '列表页不该出现时间信息');
+  assert(todos[0].createdAt, '数据里还记着，以后要用还有');
 
   click(root.querySelector('.todo-item'));
-  const labels = textsOf(root, '.detail-label');
-  assert(labels.includes('开始时间'), '详情页应该有"开始时间"这一行');
-});
-
-test('开始时间：详情页显示成 年-月-日 时:分 的样子', () => {
-  const { root } = setup({ categories: ['工作'] });
-  addTodo('工作', '写周报');
-  click(root.querySelector('.todo-item'));
-
-  const value = detailValue(root, '开始时间');
-  assert(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(value), '时间格式不对，实际显示：' + value);
+  assertEqual(root.textContent.includes('开始时间'), false, '详情页上不再有"开始时间"');
+  assertEqual(root.textContent.includes(formatDateTime(todos[0].createdAt)), false, '也不显示那个时间');
 });
 
 test('老数据兼容：没有时间字段的老任务不会出错', () => {
@@ -784,26 +769,32 @@ test('老数据兼容：没有时间字段的老任务不会出错', () => {
   assertEqual(todos[0].reminded, false, '缺失的提醒标记应该补成 false');
 
   click(root.querySelector('.todo-item'));
-  const values = textsOf(root, '.detail-value');
-  assert(values.includes('未记录'), '老任务的开始时间应该显示"未记录"，而不是空白或报错');
+  assert(root.querySelector('.detail-card'), '老任务的详情页能正常打开');
+  assertEqual(root.querySelector('.due-text'), null, '没有截止时间，闹钟旁边不写时间');
 });
 
 
 // ========== 截止时间 ==========
 
-test('截止时间：初始显示"未设置"，点时钟图标能打开编辑区', () => {
+test('截止时间：没设时只有一个闹钟图标，点它能打开编辑区，再点收起', () => {
   const { root } = setup({ categories: ['工作'] });
   addTodo('工作', '写周报');
   click(root.querySelector('.todo-item'));
 
-  assert(textsOf(root, '.detail-value').includes('未设置'), '初始应该显示未设置');
+  const alarm = root.querySelector('.due-btn');
+  assert(alarm.querySelector('svg'), '闹钟是画出来的图标');
+  assertEqual(alarm.classList.contains('has-due'), false, '没设时间，不是红的');
+  assertEqual(alarm.querySelector('.due-text'), null, '只有图标，不写字');
   assertEqual(root.querySelector('.due-editor'), null, '一开始不该显示编辑区');
 
-  click(root.querySelector('.icon-btn'));
+  click(alarm);
 
-  assert(root.querySelector('.due-editor'), '点时钟图标应该展开编辑区');
+  assert(root.querySelector('.due-editor'), '点闹钟应该展开编辑区');
   assert(root.querySelector('.due-input'), '编辑区里应该有选时间的输入框');
   assert(root.querySelector('.remind-select'), '编辑区里应该有选提醒方式的下拉框');
+
+  click(root.querySelector('.due-btn'));
+  assertEqual(root.querySelector('.due-editor'), null, '再点一次闹钟收起');
 });
 
 test('截止时间：保存后写进数据，并显示在详情页', () => {
@@ -818,9 +809,10 @@ test('截止时间：保存后写进数据，并显示在详情页', () => {
   assertEqual(new Date(stored(storage, 'todos')[0].dueAt).getTime(), expected, '截止时间要保存下来');
 
   click(root.querySelector('.todo-item'));
-  const labels = textsOf(root, '.detail-label');
-  assert(labels.includes('截止时间') && labels.includes('提醒'), '详情页应该显示截止时间和提醒两行');
-  assert(textsOf(root, '.detail-value').includes('提前 1 小时'), '提醒方式应该显示成人话');
+  const alarm = root.querySelector('.due-btn');
+  assert(alarm.classList.contains('has-due'), '设了时间，闹钟标红');
+  assert(alarm.querySelector('.due-text').textContent.endsWith('09:00'), '闹钟旁边写上几点，实际：' + alarm.querySelector('.due-text').textContent);
+  assert(alarm.getAttribute('aria-label').includes('提前 1 小时'), '提醒合进了闹钟里：读屏软件要能听到提醒方式，而且说成人话');
 });
 
 test('截止时间：没选日期时不保存', () => {
@@ -857,12 +849,12 @@ test('截止时间：改了时间后，之前提醒过的标记会重置', () =>
   assertEqual(todos[0].reminded, false, '换了新的截止时间，应该重新提醒一次');
 });
 
-test('截止时间：详情页里"未设置"时不显示提醒那一行', () => {
+test('截止时间：没设截止时间时，闹钟也不提提醒', () => {
   const { root } = setup({ categories: ['工作'] });
   addTodo('工作', '写周报');
   click(root.querySelector('.todo-item'));
 
-  assert(!textsOf(root, '.detail-label').includes('提醒'), '没设截止时间就没有提醒可言');
+  assertEqual(root.querySelector('.due-btn').getAttribute('aria-label'), '设置截止时间和提醒', '没设截止时间就没有提醒可言，只说能去设置');
 });
 
 
@@ -1466,7 +1458,8 @@ test('放弃：已完成和已放弃分成两个独立分组', () => {
   assertEqual(itemNamed(root, '放弃的'), undefined, '两个分组应该各自独立展开');
 });
 
-test('放弃：详情页会显示状态', () => {
+test('放弃：详情页看得出这条是放弃了还是做完了', () => {
+  // 以前靠"状态：已放弃"那一行；这一行去掉后，靠勾选框里的叉和划掉的标题
   const { root } = setup({
     categories: ['工作'],
     todos: [{ text: '学法语', status: 'abandoned', category: '工作' }]
@@ -1474,7 +1467,9 @@ test('放弃：详情页会显示状态', () => {
   expandGroup(root, '已放弃');
   click(itemNamed(root, '学法语'));
 
-  assertEqual(detailValue(root, '状态'), '已放弃', '详情页应该看得出这条是放弃了还是做完了');
+  assert(root.querySelector('.detail-card .checkbox.abandoned'), '勾选框显示成放弃的样子（叉），不是勾');
+  assert(root.querySelector('.detail-card').classList.contains('abandoned'), '卡片标成放弃，标题会被划掉');
+  assertEqual(root.textContent.includes('状态'), false, '不再有"状态"那一行');
 });
 
 
@@ -1511,7 +1506,6 @@ test('详情页：顶部是一左一右两个悬浮圆按钮', () => {
   assert(header.querySelector('.back-btn svg'), '返回箭头是画出来的 SVG，不是文字符号');
   assert(header.querySelector('.menu-btn.round-btn'), '右边是圆形的 ⋯ 菜单按钮');
   assertEqual(root.querySelector('.detail-card .menu-btn'), null, '菜单已经挪到顶部，卡片里不该还留一个');
-  assert(root.querySelector('.detail-card .pin-btn'), '置顶按钮还是留在卡片里');
 });
 
 test('详情页：菜单里能改名、移动、标记完成', () => {
@@ -2132,4 +2126,112 @@ test('自检：跑测试不会碰到浏览器里的真实数据', () => {
   deleteCategory('工作');
 
   assertEqual(realTodos(), before, '测试绝对不能改动你真实的待办数据');
+});
+
+
+// ========== 详情页：清单标签 + 闹钟 ==========
+
+test('今天页：任务不带置顶按钮（说不清是在这一页置顶还是在原清单置顶）；清单页里照样有', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [{ text: '交报告', status: 'active', category: '工作', dueAt: isoAfter(60) }],
+    expandedCategory: '工作'
+  });
+
+  assert(itemNamed(root, '交报告').querySelector('.pin-btn'), '清单页里有置顶按钮');
+
+  click(tabButton(root, '今天'));
+  assert(itemNamed(root, '交报告'), '今天页里有这条任务');
+  assertEqual(itemNamed(root, '交报告').querySelector('.pin-btn'), null, '今天页里没有置顶按钮');
+  assert(itemNamed(root, '交报告').querySelector('.menu-btn'), '⋯ 菜单还在');
+});
+
+test('详情页：卡片里没有置顶按钮，也不再有"状态""开始时间"这些行', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [{ text: '写周报', status: 'active', category: '工作', createdAt: FIXED_NOW }],
+    expandedCategory: '工作'
+  });
+  click(root.querySelector('.todo-item'));
+
+  assertEqual(root.querySelector('.detail-card .pin-btn'), null, '置顶在清单里点就行，详情页不放');
+  assertEqual(root.querySelector('.pin-btn'), null, '整个详情页都没有');
+  ['状态', '开始时间', '截止时间', '提醒'].forEach((word) => {
+    assertEqual(root.textContent.includes(word), false, `不再有"${word}"这一行`);
+  });
+});
+
+test('详情页：标题下面一行是清单标签和闹钟', () => {
+  const { root } = setup({
+    categories: ['工作', 'Vibe Coding'],
+    todos: [{ text: '写周报', status: 'active', category: 'Vibe Coding' }],
+    expandedCategory: 'Vibe Coding'
+  });
+  click(root.querySelector('.todo-item'));
+
+  const meta = root.querySelector('.detail-meta');
+  assert(meta, '有这一行');
+  assert(meta.previousElementSibling === root.querySelector('.detail-card'), '紧跟在标题卡片下面');
+  assertEqual([...meta.children].map((el) => el.className.split(' ')[0]), ['list-chip', 'due-btn'], '先是清单标签，旁边是闹钟');
+  assertEqual(meta.querySelector('.list-chip').textContent, 'Vibe Coding', '标签上写的是所在的清单');
+});
+
+test('详情页：清单标签是虚线框；闹钟没设时间是灰的，设了时间变红', async () => {
+  await useAppStyles();
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [
+      { text: '没时间的', status: 'active', category: '工作' },
+      { text: '有时间的', status: 'active', category: '工作', dueAt: isoAfter(60) }
+    ],
+    expandedCategory: '工作'
+  });
+  const danger = 'rgb(224, 82, 82)';   // style.css 的 --danger
+
+  click(itemNamed(root, '没时间的'));
+  assertEqual(getComputedStyle(root.querySelector('.list-chip')).borderTopStyle, 'dashed', '清单标签用虚线框');
+  assert(getComputedStyle(root.querySelector('.due-icon')).color !== danger, '没设时间的闹钟不是红的');
+  click(root.querySelector('.back-btn'));
+
+  click(itemNamed(root, '有时间的'));
+  assertEqual(getComputedStyle(root.querySelector('.due-icon')).color, danger, '设了时间的闹钟是红的');
+});
+
+test('详情页：闹钟旁边的时间说得短：今天 / 明天 / 昨天 / 几月几日 / 跨年带上年份', () => {
+  setup();
+  // 按本地的"今天零点"往后推，不管测试机在哪个时区都对得上
+  const at = (days, hours, minutes) => new Date(startOfToday() + days * 86400000 + (hours * 60 + minutes) * 60000).toISOString();
+  const today = new Date(startOfToday());
+
+  assertEqual(formatDueShort(at(0, 22, 50)), '今天 22:50', '今天');
+  assertEqual(formatDueShort(at(0, 0, 5)), '今天 00:05', '今天凌晨也是今天（别按 UTC 日期算错天）');
+  assertEqual(formatDueShort(at(1, 9, 0)), '明天 09:00', '明天');
+  assertEqual(formatDueShort(at(-1, 23, 30)), '昨天 23:30', '昨天（已经过期的）');
+
+  const later = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 5, 8, 0);
+  const expectedLater = later.getFullYear() === today.getFullYear()
+    ? `${later.getMonth() + 1}月${later.getDate()}日 08:00`
+    : `${later.getFullYear()}年${later.getMonth() + 1}月${later.getDate()}日 08:00`;
+  assertEqual(formatDueShort(later.toISOString()), expectedLater, '再往后就写几月几日');
+
+  const nextYear = new Date(today.getFullYear() + 1, 0, 3, 9, 0);
+  assertEqual(formatDueShort(nextYear.toISOString()), `${today.getFullYear() + 1}年1月3日 09:00`, '不是今年的带上年份');
+});
+
+test('详情页：在闹钟里设好时间保存后，闹钟变红、写上时间，编辑区收起', () => {
+  const { root } = setup({ categories: ['工作'], expandedCategory: '工作' });
+  addTodo('工作', '写周报');
+  click(root.querySelector('.todo-item'));
+
+  click(root.querySelector('.due-btn'));
+  const tomorrow = new Date(startOfToday() + 86400000);
+  const pad = (n) => String(n).padStart(2, '0');
+  root.querySelector('.due-input').value = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}T18:30`;
+  root.querySelector('.remind-select').value = '60';
+  click([...root.querySelectorAll('.due-editor button')].find((b) => b.textContent === '保存'));
+
+  assertEqual(root.querySelector('.due-editor'), null, '保存后收起');
+  const alarm = root.querySelector('.due-btn');
+  assert(alarm.classList.contains('has-due'), '闹钟变红');
+  assertEqual(alarm.querySelector('.due-text').textContent, '明天 18:30', '写上时间');
 });

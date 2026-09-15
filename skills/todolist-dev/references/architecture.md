@@ -90,6 +90,9 @@ function useStorage(fake) { storage = fake; }
   **界面状态（`addingTagIn` / `managingTagId` / `renamingTagId`）两页共用**，换底部页面时要收起。
   第三个页面要标签时，照着这两个标签集再写一个，别复制界面代码。
 - 菜单项支持 `checked: true`（右边打勾），用于"放到标签"这种单选。
+- `createTodoItem(todo, index, { draggable, pinnable })` — 同一条任务在不同页面上长得不完全一样：
+  "今天"页混着不同清单的任务，传 `draggable: false, pinnable: false`（没有顺序可言、置顶说不清在哪置顶）。
+  **一个按钮放在某个页面上会让人分不清它作用在哪时，就别在那个页面放。**
 - `createFab(label, onClick)` — 右下角浮着的蓝色圆形 + 按钮。`label` 给读屏软件用。页面上放了它，记得给这一页的容器加 `has-fab`（列表底部留空）。
 - `createPopupCard({ title, body, onSubmit, onCancel })` — 新建面板的"壳"：暗色遮罩 + 靠上方的卡片 + 取消/创建。
   卡片里放什么由各页决定（清单：名字 + 单选标签；打卡：名字 + 多选标签）。**壳共用、内容各管各的**，这是判断"要不要抽组件"的好标准。

@@ -100,7 +100,6 @@
   @media (hover: none) {
     .pin-btn,
     .menu-btn,
-    .icon-btn,
     .attach-remove {
       min-width: 36px;
       min-height: 36px;
@@ -1197,40 +1196,62 @@
     text-decoration: line-through;
   }
 
-  .detail-row {
+  /* 详情页标题下面一行：清单标签 + 闹钟 */
+  .detail-meta {
     display: flex;
     align-items: center;
-    gap: var(--space-3);
-    padding: var(--space-3) var(--space-1);
-    font-size: var(--text-base);
-    border-bottom: 1px solid var(--divider);
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin: var(--space-3) 0 var(--space-2);
+  }
+
+  /* 属于哪个清单：长得像标签，但用虚线框，表示"这是它所在的地方"而不是可以点选的标签 */
+  .list-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    box-sizing: border-box;
+    padding: 0 var(--space-3);
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    border: 1px dashed var(--border);
+    border-radius: 999px;
+  }
+
+  /* 闹钟：截止时间和提醒。没设时是灰色小图标，设了时间图标变红、旁边写上时间 */
+  .due-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-height: 32px;
+    min-width: 32px;                   /* 只有图标时也要好点 */
+    padding: 0 var(--space-2);
+    font-family: inherit;
+    font-size: var(--text-sm);
+    color: var(--text-faint);
+    background: none;
+    border: none;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+
+  .due-icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  .due-btn.has-due .due-icon {
+    color: var(--danger);
+  }
+
+  .due-btn.has-due .due-text {
+    color: var(--text-muted);
   }
 
   .detail-label {
     flex-shrink: 0;
     width: 68px;
     color: var(--text-subtle);
-  }
-
-  .detail-value {
-    flex: 1;
-  }
-
-  .detail-value.empty {
-    color: var(--icon-idle);
-  }
-
-  .icon-btn {
-    padding: var(--space-1);
-    font-size: var(--text-md);
-    color: var(--text-faint);
-    background: none;
-    border: none;
-    cursor: pointer;
-  }
-
-  .icon-btn:hover {
-    color: var(--accent);
   }
 
   .due-editor {

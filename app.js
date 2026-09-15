@@ -901,7 +901,8 @@ function createTodaySection(label, items, extraClass) {
   items.forEach((item) => {
     // 这一页的任务来自不同清单，所以关掉拖拽（这里没有"顺序"可言），
     // 并且额外标出它属于哪个清单
-    const li = createTodoItem(item.todo, item.index, { draggable: false });
+    // 这一页混着不同清单的任务：没有"顺序"可言，不能拖；置顶也说不清是在这一页置顶还是在原清单里置顶，不放
+    const li = createTodoItem(item.todo, item.index, { draggable: false, pinnable: false });
 
     const meta = document.createElement('span');
     meta.className = 'todo-meta';
@@ -1114,8 +1115,9 @@ function createTodoItem(todo, index, options = {}) {
   // 这里不再拦点击：让它冒泡到整行，统一进详情页
 
   li.append(checkbox, textSpan);
-  // 已完成和已放弃的都收在分组里，置顶按钮对它们没有意义，就不显示了
-  if (todo.status === 'active') {
+  // 已完成和已放弃的都收在分组里，置顶按钮对它们没有意义，就不显示了；
+  // 调用方也可以说不要（"今天"页）
+  if (todo.status === 'active' && options.pinnable !== false) {
     li.appendChild(createPinButton(index));
   }
   li.appendChild(createTodoMenu(index));
@@ -1151,6 +1153,8 @@ const ICON_PATHS = {
   list: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
   chevronLeft: 'M15 18l-6-6 6-6',
   plus: 'M12 5v14M5 12h14',
+  // 闹钟（Lucide 的 alarm-clock）：表盘 + 指针 + 头上两只"耳朵" + 两条腿
+  alarm: 'M12 5a8 8 0 1 0 0 16a8 8 0 1 0 0-16M12 9v4l2 2M5 3L2 6M22 6l-3-3M6.38 18.7L4 21M17.64 18.67L20 21',
   calendar: 'M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2zM16 2v4M8 2v4M3 10h18',
   checkCircle: 'M22 11.08V12a10 10 0 11-5.93-9.14M22 4L12 14.01l-3-3',
   // 手写风格的圈：起笔和收笔故意错开一点、椭圆也不对称，看起来像笔圈出来的。
@@ -1517,49 +1521,36 @@ function createDetailPage(index) {
       render();
     });
     card.appendChild(title);
-    if (todo.status === 'active') {
-      card.appendChild(createPinButton(index));
-    }
+    // 详情页不放置顶按钮：置顶是"在清单里排前面"，在清单里点就行，放在这里只会让人分不清是在哪置顶
   }
 
   page.append(header, card);
 
-  const statusLabels = { active: '未完成', done: '已完成', abandoned: '已放弃' };
-  page.appendChild(createDetailRow('状态', statusLabels[todo.status]));
-  page.appendChild(createDetailRow('清单', todo.category));
-  // 开始时间 = 创建这条任务的时间，只在详情页显示
-  page.appendChild(createDetailRow('开始时间', todo.createdAt ? formatDateTime(todo.createdAt) : '未记录'));
+  // 标题下面一行：属于哪个清单（虚线框的标签）+ 闹钟。
+  // 原来这里是"状态 / 清单 / 开始时间 / 截止时间 / 提醒"一行行的表格：
+  // 状态看勾选框就知道，开始时间没人关心（数据照样记着，只是不显示），截止时间和提醒合进闹钟里
+  const meta = document.createElement('div');
+  meta.className = 'detail-meta';
+
+  const listChip = document.createElement('span');
+  listChip.className = 'list-chip';
+  listChip.textContent = todo.category;
+
+  meta.append(listChip, createDueButton(index));
+  page.appendChild(meta);
 
   if (editingDueFor === index) {
     page.appendChild(createDueEditor(index));
-  } else {
-    // 截止时间那一行右边有个可以点的时钟图标
-    const dueRow = createDetailRow('截止时间', todo.dueAt ? formatDateTime(todo.dueAt) : '未设置');
-    const clockBtn = document.createElement('button');
-    clockBtn.className = 'icon-btn';
-    clockBtn.textContent = '🕐';
-    clockBtn.title = '设置截止时间';
-    clockBtn.addEventListener('click', () => {
-      editingDueFor = index;
-      render();
-    });
-    dueRow.appendChild(clockBtn);
-    page.appendChild(dueRow);
+  }
 
-    // 没设截止时间就没有提醒可言，这一行就不显示了
-    if (todo.dueAt) {
-      page.appendChild(createDetailRow('提醒', remindLabel(todo.remindBefore)));
-
-      // 设了提醒但浏览器不给弹通知，得告诉用户一声，否则会以为坏了
-      if (todo.remindBefore !== null && notifier.permission() !== 'granted') {
-        const notice = document.createElement('div');
-        notice.className = 'notice';
-        notice.textContent = notifier.permission() === 'denied'
-          ? '⚠️ 浏览器的通知权限被拒绝了，到点不会弹提醒。可以在浏览器设置里重新允许。'
-          : '⚠️ 还没允许通知，到点可能不会弹提醒。';
-        page.appendChild(notice);
-      }
-    }
+  // 设了提醒但浏览器不给弹通知，得告诉用户一声，否则会以为坏了
+  if (todo.dueAt && todo.remindBefore !== null && notifier.permission() !== 'granted') {
+    const notice = document.createElement('div');
+    notice.className = 'notice';
+    notice.textContent = notifier.permission() === 'denied'
+      ? '⚠️ 浏览器的通知权限被拒绝了，到点不会弹提醒。可以在浏览器设置里重新允许。'
+      : '⚠️ 还没允许通知，到点可能不会弹提醒。';
+    page.appendChild(notice);
   }
 
   page.appendChild(createNoteSection(index));
@@ -1693,20 +1684,52 @@ function formatFileSize(bytes) {
 }
 
 // 详情页里的一行：左边灰色标签，右边内容
-function createDetailRow(label, value) {
-  const row = document.createElement('div');
-  row.className = 'detail-row';
+// 详情页清单标签旁边的闹钟：截止时间和提醒合在这一个按钮里，点开就能设置。
+// 没设时间：只有一个灰色的闹钟。设了时间：闹钟变红，旁边写上什么时候到期。
+// 提醒没有单独显示在界面上（地方小），但读屏软件和鼠标悬停时能听到 / 看到
+function createDueButton(index) {
+  const todo = todos[index];
+  const btn = document.createElement('button');
+  btn.className = todo.dueAt ? 'due-btn has-due' : 'due-btn';
+  btn.appendChild(createIcon('alarm', 'due-icon'));
 
-  const labelEl = document.createElement('span');
-  labelEl.className = 'detail-label';
-  labelEl.textContent = label;
+  if (todo.dueAt) {
+    const time = document.createElement('span');
+    time.className = 'due-text';
+    time.textContent = formatDueShort(todo.dueAt);
+    btn.appendChild(time);
+    const label = `截止 ${formatDateTime(todo.dueAt)}，${remindLabel(todo.remindBefore)}`;
+    btn.title = label;
+    btn.setAttribute('aria-label', label);
+  } else {
+    btn.title = '设置截止时间和提醒';
+    btn.setAttribute('aria-label', '设置截止时间和提醒');
+  }
 
-  const valueEl = document.createElement('span');
-  valueEl.className = value === '未设置' || value === '未记录' ? 'detail-value empty' : 'detail-value';
-  valueEl.textContent = value;
+  btn.addEventListener('click', () => {
+    // 再点一次收起编辑区
+    editingDueFor = editingDueFor === index ? null : index;
+    render();
+  });
+  return btn;
+}
 
-  row.append(labelEl, valueEl);
-  return row;
+// 闹钟旁边的时间写得短一点：今天 22:50 / 明天 09:00 / 9月20日 09:00 / 2027年1月3日 09:00
+// 按本地日期比，不能拿 ISO 字符串的前 10 位比（那是 UTC 日期，晚上的时间会算错天）
+function formatDueShort(isoText) {
+  const due = new Date(isoText);
+  const pad = (n) => String(n).padStart(2, '0');
+  const time = `${pad(due.getHours())}:${pad(due.getMinutes())}`;
+
+  const dayMs = 24 * 60 * 60 * 1000;
+  const days = Math.round((new Date(due.getFullYear(), due.getMonth(), due.getDate()).getTime() - startOfToday()) / dayMs);
+  if (days === 0) return `今天 ${time}`;
+  if (days === 1) return `明天 ${time}`;
+  if (days === -1) return `昨天 ${time}`;
+
+  const sameYear = due.getFullYear() === nowFn().getFullYear();
+  const date = `${due.getMonth() + 1}月${due.getDate()}日`;
+  return sameYear ? `${date} ${time}` : `${due.getFullYear()}年${date} ${time}`;
 }
 
 // 点了时钟图标之后展开的编辑区：选时间 + 选提醒方式

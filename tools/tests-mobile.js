@@ -245,7 +245,7 @@ test('防缩放：所有输入框字号都不小于 16px（小于 16px 时 iPhon
   // 任务详情页：备注、截止时间、提醒方式
   addTodo('工作', '写周报');
   click(root.querySelector('.todo-item'));
-  click(root.querySelector('.icon-btn'));
+  click(root.querySelector('.due-btn'));
   checkAll('任务详情页');
   click(root.querySelector('.back-btn'));
 

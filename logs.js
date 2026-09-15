@@ -2,7 +2,7 @@
 //
 // 和待办清单是两块互不相干的数据，各存各的。
 // 这个文件用到 app.js 里的公共工具（storage、nowFn、confirmFn、render、createMenu、
-// createRenameInput、createDetailRow、formatDateTime、closeMenuIfOpen），
+// createRenameInput、formatDateTime、closeMenuIfOpen），
 // 标签界面用的是 tags.js 里的共用组件，所以页面里必须排在 app.js 和 tags.js 后面加载。
 
 const LOG_DAY_MS = 24 * 60 * 60 * 1000;
