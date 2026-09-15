@@ -686,6 +686,17 @@
 
   /* 清单名比任务文字大一号、更粗、更深，
      这样一眼就能看出"清单是标题、任务是内容"的层级 */
+  /* 展开的空清单下面那行小字：让人看得出"点开了，只是里面没东西" */
+  .empty-list-hint {
+    padding: var(--space-2) var(--space-1) var(--space-3);
+    font-size: var(--text-sm);
+    color: var(--text-faint);
+  }
+
+  .empty-list-hint.clickable {
+    cursor: pointer;
+  }
+
   .category-name {
     font-size: var(--text-lg);
     font-weight: 700;
@@ -950,13 +961,7 @@
     color: var(--text-title);
   }
 
-  .popup-label {
-    margin: var(--space-4) 0 var(--space-2);
-    font-size: var(--text-xs);
-    color: var(--text-subtle);
-  }
-
-  /* 输入框下面直接跟着一排选项（新建任务面板没有小标题）时，中间留点空，别贴在一起 */
+  /* 输入框下面直接跟着一排选项时，中间留点空，别贴在一起（三个新建面板都不写小标题了，全靠这条） */
   .popup-card .add-input + .tag-picker {
     margin-top: var(--space-3);
   }

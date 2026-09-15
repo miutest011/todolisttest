@@ -538,10 +538,6 @@ function createLogItemDraftPanel() {
     }
   });
 
-  const label = document.createElement('div');
-  label.className = 'popup-label';
-  label.textContent = '标签';
-
   const picker = createTagPicker(
     logTagSet,
     draft.tagIds,
@@ -560,7 +556,7 @@ function createLogItemDraftPanel() {
 
   return createPopupCard({
     title: '新增打卡',
-    body: [input, label, picker],
+    body: [input, picker],     // 不写"标签"两个字：一排标签、选中的蓝底，一看就懂
     onSubmit: submitLogItemDraft,
     onCancel: cancelLogItemDraft
   });

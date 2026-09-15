@@ -638,6 +638,29 @@ function createTasksView() {
   return view;
 }
 
+// 展开的空清单下面那行小字。点它弹出新建任务面板 —— 和右下角 + 一样；
+// 清单正展开着，面板默认放进的就是它。
+// 归档了的清单不能再往里放任务（面板里也选不到它），所以只说没有内容，不说"点击添加"，点了也没反应
+function createEmptyListHint(category) {
+  const hint = document.createElement('div');
+  hint.className = 'empty-list-hint';
+
+  if (isCategoryArchived(category)) {
+    hint.textContent = '该清单内还没有内容';
+    return hint;
+  }
+
+  hint.textContent = '该清单内还没有内容，点击添加';
+  hint.classList.add('clickable');
+  hint.setAttribute('role', 'button');
+  hint.addEventListener('click', () => {
+    if (shouldIgnoreClick()) return;
+    if (closeMenuIfOpen()) return;
+    openTaskDraft();
+  });
+  return hint;
+}
+
 // 筛选后一个清单都没有时说什么
 function listEmptyMessage(shown) {
   if (shown.length > 0) return '';
@@ -681,10 +704,6 @@ function createCategoryDraftPanel() {
     }
   });
 
-  const label = document.createElement('div');
-  label.className = 'popup-label';
-  label.textContent = '放到标签';
-
   const picker = createTagPicker(
     listTagSet,
     draft.tagId ? [draft.tagId] : [],
@@ -701,7 +720,7 @@ function createCategoryDraftPanel() {
 
   return createPopupCard({
     title: '新建清单',
-    body: [input, label, picker],
+    body: [input, picker],     // 不写"放到标签"：一排标签、选中的蓝底，一看就懂
     onSubmit: submitCategoryDraft,
     onCancel: cancelCategoryDraft
   });
@@ -987,6 +1006,12 @@ function createCategorySection(category) {
 
     section.appendChild(list);
     // 清单底下原来有一行"+ 添加任务"，和右下角的 + 重复了，去掉。新建任务一律走右下角的 +
+
+    // 一条任务都没有的清单，展开和收起看起来一模一样（标题下面都是空的），分不清点没点开。
+    // 所以展开时给一行小字。只剩已完成 / 已放弃的清单不用：下面有"已完成 3"这样的分组，看得出是展开的
+    if (items.length === 0) {
+      section.appendChild(createEmptyListHint(category));
+    }
     section.appendChild(createSubGroup(category, 'done', '已完成',
       items.filter((item) => item.todo.status === 'done')));
     section.appendChild(createSubGroup(category, 'abandoned', '已放弃',

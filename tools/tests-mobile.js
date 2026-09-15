@@ -916,3 +916,111 @@ test('新建任务面板：清单那一排和上面的输入框之间留了空�
   // 真踩过：去掉"放进清单"那行字之后，原来靠它撑开的距离没了，一排清单直接贴在输入框底下
   assert(rowTop - inputBottom >= 8, `中间至少留 8px，实际 ${Math.round(rowTop - inputBottom)}px`);
 });
+
+
+// ========== 三个新建面板都不写小标题；展开的空清单给一行提示 ==========
+
+test('新建面板：三个面板（新建任务 / 新建清单 / 新增打卡）都不写小标题，输入框下面直接是一排选项', () => {
+  const { root } = setup({ categories: ['工作'], listTags: [listTag('公司')], logTags: [logTag('健身')], expandedCategory: '工作' });
+  // 卡片里从上到下该是：标题、输入框、一排选项、按钮
+  const layout = () => [...root.querySelector('.popup-card').children].map((el) => el.className.split(' ')[0]);
+
+  click(root.querySelector('.fab'));
+  assertEqual(layout(), ['popup-title', 'add-input', 'tag-picker', 'popup-actions'], '新建任务面板');
+  click(root.querySelector('.popup-cancel'));
+
+  click(root.querySelector('.tag-row .menu-btn'));
+  click(menuItemNamed(root, '新建清单'));
+  assertEqual(layout(), ['popup-title', 'add-input', 'tag-picker', 'popup-actions'], '新建清单面板');
+  assertEqual(root.querySelector('.popup-card').textContent.includes('放到标签'), false, '不写"放到标签"');
+  click(root.querySelector('.popup-cancel'));
+
+  openLogsTab(root);
+  click(root.querySelector('.fab'));
+  assertEqual(layout(), ['popup-title', 'add-input', 'tag-picker', 'popup-actions'], '新增打卡面板（"标签"两个字也不写了）');
+});
+
+test('新建面板：三个面板里，一排选项和输入框之间都留了空', async () => {
+  await useAppStyles();
+  const { root } = setup({ categories: ['工作'], listTags: [listTag('公司')], logTags: [logTag('健身')], expandedCategory: '工作' });
+  const gap = () => root.querySelector('.popup-card .tag-picker').getBoundingClientRect().top -
+    root.querySelector('.popup-card .add-input').getBoundingClientRect().bottom;
+
+  click(root.querySelector('.tag-row .menu-btn'));
+  click(menuItemNamed(root, '新建清单'));
+  assert(gap() >= 8, `新建清单面板：小标题去掉后原来靠它撑开的距离没了，要自己留空，实际 ${Math.round(gap())}px`);
+  click(root.querySelector('.popup-cancel'));
+
+  openLogsTab(root);
+  click(root.querySelector('.fab'));
+  assert(gap() >= 8, `新增打卡面板同上，实际 ${Math.round(gap())}px`);
+});
+
+function emptyHintOf(root, category) {
+  return root.querySelector(`.category[data-category="${category}"] .empty-list-hint`);
+}
+
+test('空清单：展开时下面有一行"该清单内还没有内容，点击添加"；收起时没有', () => {
+  const { root } = setup({ categories: ['工作', '生活'], todos: [{ text: '写周报', status: 'active', category: '工作' }], expandedCategory: '生活' });
+
+  const hint = emptyHintOf(root, '生活');
+  assert(hint, '展开的空清单有提示，不然展开和收起看起来一样');
+  assertEqual(hint.textContent, '该清单内还没有内容，点击添加', '提示的原话');
+
+  toggleCollapse('生活');
+  assertEqual(emptyHintOf(root, '生活'), null, '收起来就没有了');
+});
+
+test('空清单：有任务的清单、只剩已完成任务的清单，展开时都不显示提示', () => {
+  const { root } = setup({
+    categories: ['工作', '生活'],
+    todos: [
+      { text: '写周报', status: 'active', category: '工作' },
+      { text: '买菜', status: 'done', category: '生活' }
+    ],
+    expandedCategory: '工作'
+  });
+
+  assertEqual(emptyHintOf(root, '工作'), null, '有任务的不显示');
+
+  toggleCollapse('生活');
+  assertEqual(emptyHintOf(root, '生活'), null, '只剩已完成的：下面有"已完成 1"分组，看得出是展开的，也不该说"还没有内容"');
+  assert(root.querySelector('.category[data-category="生活"] .sub-group'), '先确认已完成分组在');
+});
+
+test('空清单：点提示弹出新建任务面板（和右下角 + 一样），默认放进这个清单，加完提示消失', () => {
+  const { root } = setup({ categories: ['工作', '生活'], expandedCategory: '生活' });
+
+  click(emptyHintOf(root, '生活'));
+
+  assertEqual(root.querySelector('.popup-title').textContent, '新建任务', '弹出的是新建任务面板');
+  assertEqual(textsOf(root, '.popup-card .list-option.selected'), ['生活'], '默认放进这个清单');
+  press(typeTaskName(root, '买菜'), 'Enter');
+
+  assertEqual(todos.map((t) => [t.text, t.category]), [['买菜', '生活']], '加进了生活');
+  assertEqual(emptyHintOf(root, '生活'), null, '有任务了，提示消失');
+});
+
+test('空清单：菜单开着时点提示，只关菜单、不弹面板', () => {
+  const { root } = setup({ categories: ['生活'], expandedCategory: '生活' });
+
+  click(root.querySelector('.category-header .menu-btn'));
+  click(emptyHintOf(root, '生活'));
+
+  assertEqual(root.querySelector('.menu'), null, '菜单关了');
+  assertEqual(root.querySelector('.popup-card'), null, '这一下只是用来关菜单的');
+});
+
+test('空清单：已归档的空清单只说没有内容，不说"点击添加"，点了也不弹面板', () => {
+  const { root } = setup({
+    categories: ['工作', '旧项目'],
+    categoryMeta: { '旧项目': { tagId: null, archived: true } },
+    expandedCategory: '旧项目'
+  });
+  click(tagChip(root, '已归档'));
+
+  const hint = emptyHintOf(root, '旧项目');
+  assertEqual(hint.textContent, '该清单内还没有内容', '归档的清单不能再往里放任务');
+  click(hint);
+  assertEqual(root.querySelector('.popup-card'), null, '点了没反应');
+});

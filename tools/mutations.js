@@ -835,6 +835,57 @@ const MUTATIONS = [
     replace: "  .popup-card .add-input + .tag-picker {\n    margin-top: 0;"
   },
 
+  // ---------- 空清单提示；新建面板都不写小标题 ----------
+  {
+    group: '空清单提示；新建面板都不写小标题',
+    name: '新建清单面板又显示"放到标签"',
+    file: 'app.js',
+    find: "    body: [input, picker],     // 不写\"放到标签\"",
+    replace: "    body: [input, Object.assign(document.createElement('div'), { className: 'popup-label', textContent: '放到标签' }), picker],     // 不写\"放到标签\""
+  },
+  {
+    group: '空清单提示；新建面板都不写小标题',
+    name: '新增打卡面板又显示"标签"两个字',
+    file: 'logs.js',
+    find: "    body: [input, picker],     // 不写\"标签\"两个字",
+    replace: "    body: [input, Object.assign(document.createElement('div'), { className: 'popup-label', textContent: '标签' }), picker],     // 不写\"标签\"两个字"
+  },
+  {
+    group: '空清单提示；新建面板都不写小标题',
+    name: '展开的空清单下面没有提示（分不清展开没展开）',
+    file: 'app.js',
+    find: "      section.appendChild(createEmptyListHint(category));\n",
+    replace: ""
+  },
+  {
+    group: '空清单提示；新建面板都不写小标题',
+    name: '只剩已完成任务的清单也说"还没有内容"',
+    file: 'app.js',
+    find: "    if (items.length === 0) {\n      section.appendChild(createEmptyListHint(category));",
+    replace: "    if (items.filter((item) => item.todo.status === 'active').length === 0) {\n      section.appendChild(createEmptyListHint(category));"
+  },
+  {
+    group: '空清单提示；新建面板都不写小标题',
+    name: '点空清单的提示不弹新建任务面板',
+    file: 'app.js',
+    find: "    openTaskDraft();\n  });\n  return hint;",
+    replace: "  });\n  return hint;"
+  },
+  {
+    group: '空清单提示；新建面板都不写小标题',
+    name: '菜单开着时点空清单提示，也顺手弹了面板',
+    file: 'app.js',
+    find: "    if (closeMenuIfOpen()) return;\n    openTaskDraft();",
+    replace: "    closeMenuIfOpen();\n    openTaskDraft();"
+  },
+  {
+    group: '空清单提示；新建面板都不写小标题',
+    name: '归档的空清单也说"点击添加"',
+    file: 'app.js',
+    find: "  if (isCategoryArchived(category)) {\n    hint.textContent = '该清单内还没有内容';",
+    replace: "  if (false) {\n    hint.textContent = '该清单内还没有内容';"
+  },
+
   // ---------- 测试工具自己 ----------
   {
     group: '测试工具',

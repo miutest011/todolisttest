@@ -91,6 +91,9 @@ python3 tools/dev-server.py
   localStorage.clear(); indexedDB.deleteDatabase('todolist-files'); location.reload();
   ```
   别把演示用的"喝水""写周报"留在用户的 App 里。如果调过视窗尺寸，也恢复回去。
+  **清之前、往里塞示例数据之前，先看一眼里面是什么，不只是有哪些键。** 预览面板用户也看得到、也会点着试：
+  有一次里面是一条随手敲的"q'sqwl"——用户自己建的，却被当成测试残留清掉了。
+  看起来像用户留下的，就先问一句。
 
 ### 7. 如实汇报
 
