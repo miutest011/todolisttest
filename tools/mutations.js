@@ -886,6 +886,211 @@ const MUTATIONS = [
     replace: "  if (false) {\n    hint.textContent = '该清单内还没有内容';"
   },
 
+  // ---------- 手指滑动：下拉返回、左右滑切换标签 ----------
+  {
+    group: '手指滑动：下拉返回、左右滑切换标签',
+    name: '详情页往下翻过了，往下拉也返回',
+    file: 'app.js',
+    find: "    if (window.scrollY > 0) return false;\n",
+    replace: ""
+  },
+  {
+    group: '手指滑动：下拉返回、左右滑切换标签',
+    name: '详情页往上滑也返回',
+    file: 'app.js',
+    find: "canLock: (dy) => dy > 0,",
+    replace: "canLock: (dy) => dy !== 0,"
+  },
+  {
+    group: '手指滑动：下拉返回、左右滑切换标签',
+    name: '不比横竖哪边走得多（斜着、横着拉也算下拉）',
+    file: 'app.js',
+    find: "const mine = Math.abs(along) > Math.abs(across) && !draggingItem && options.canLock(along);",
+    replace: "const mine = !draggingItem && options.canLock(along);"
+  },
+  {
+    group: '手指滑动：下拉返回、左右滑切换标签',
+    name: '方向定了还会改（先往上再往下也算）',
+    file: 'app.js',
+    find: "      if (state === 'deciding') {",
+    replace: "      if (state !== 'mine') {"
+  },
+  {
+    group: '手指滑动：下拉返回、左右滑切换标签',
+    name: '长按拖任务时左右晃也切换标签',
+    file: 'app.js',
+    find: "const mine = Math.abs(along) > Math.abs(across) && !draggingItem && options.canLock(along);",
+    replace: "const mine = Math.abs(along) > Math.abs(across) && options.canLock(along);"
+  },
+  {
+    group: '手指滑动：下拉返回、左右滑切换标签',
+    name: '鼠标拖也算手势',
+    file: 'app.js',
+    find: "if (event.pointerType !== 'touch' || !options.canStart(event)) return;",
+    replace: "if (!options.canStart(event)) return;"
+  },
+  {
+    group: '手指滑动：下拉返回、左右滑切换标签',
+    name: '滑动时不拦页面滚动',
+    file: 'app.js',
+    find: "if (state === 'mine') touchEvent.preventDefault();",
+    replace: "if (false) touchEvent.preventDefault();"
+  },
+  {
+    group: '手指滑动：下拉返回、左右滑切换标签',
+    name: '被系统打断（pointercancel）也算数',
+    file: 'app.js',
+    find: "options.onRelease(distance, endEvent.type === 'pointerup' && (far || fast));",
+    replace: "options.onRelease(distance, far || fast);"
+  },
+  {
+    group: '手指滑动：下拉返回、左右滑切换标签',
+    name: '快速一甩不算，只认滑得远',
+    file: 'app.js',
+    find: "const fast = endEvent.timeStamp - startTime <= FLING_TIME && Math.abs(distance) >= FLING_DISTANCE;",
+    replace: "const fast = false;"
+  },
+  {
+    group: '手指滑动：下拉返回、左右滑切换标签',
+    name: '"甩"不看时间（慢慢滑一小段也算）',
+    file: 'app.js',
+    find: "const fast = endEvent.timeStamp - startTime <= FLING_TIME && Math.abs(distance) >= FLING_DISTANCE;",
+    replace: "const fast = Math.abs(distance) >= FLING_DISTANCE;"
+  },
+  {
+    group: '手指滑动：下拉返回、左右滑切换标签',
+    name: '"甩"不看距离（手指抖一下也算）',
+    file: 'app.js',
+    find: "const fast = endEvent.timeStamp - startTime <= FLING_TIME && Math.abs(distance) >= FLING_DISTANCE;",
+    replace: "const fast = endEvent.timeStamp - startTime <= FLING_TIME;"
+  },
+  {
+    group: '手指滑动：下拉返回、左右滑切换标签',
+    name: '详情页拉得不够，松手不弹回',
+    file: 'app.js',
+    find: "    const page = appEl.querySelector('.detail-page');\n    if (page) springBack(page);\n",
+    replace: ""
+  },
+  {
+    group: '手指滑动：下拉返回、左右滑切换标签',
+    name: '详情页不跟着手指走',
+    file: 'app.js',
+    find: "    page.style.transform = `translateY(${dy}px)`;\n",
+    replace: ""
+  },
+  {
+    group: '手指滑动：下拉返回、左右滑切换标签',
+    name: '打字时（键盘开着）也能滑',
+    file: 'app.js',
+    find: "  return !isTextField(document.activeElement) && openMenuKey === null;",
+    replace: "  return openMenuKey === null;"
+  },
+  {
+    group: '手指滑动：下拉返回、左右滑切换标签',
+    name: '菜单开着也能滑',
+    file: 'app.js',
+    find: "  return !isTextField(document.activeElement) && openMenuKey === null;",
+    replace: "  return !isTextField(document.activeElement);"
+  },
+  {
+    group: '手指滑动：下拉返回、左右滑切换标签',
+    name: '按在输入框里也能滑',
+    file: 'app.js',
+    find: "  if (event.target.closest && event.target.closest('input, textarea, select')) return false;\n",
+    replace: ""
+  },
+  {
+    group: '手指滑动：下拉返回、左右滑切换标签',
+    name: '下拉返回只认详情页元素，按在下面空白处拉不动',
+    file: 'app.js',
+    find: "if (!appEl || !appEl.isConnected || detailPageBack() === null) return false;",
+    replace: "if (!appEl || !appEl.contains(event.target) || detailPageBack() === null) return false;"
+  },
+  {
+    group: '手指滑动：下拉返回、左右滑切换标签',
+    name: '列表页往下拉也被拦（列表往上翻不动）',
+    file: 'app.js',
+    find: "if (!appEl || !appEl.isConnected || detailPageBack() === null) return false;",
+    replace: "if (!appEl || !appEl.isConnected) return false;"
+  },
+  {
+    group: '手指滑动：下拉返回、左右滑切换标签',
+    name: '打卡详情页下拉时关的是任务详情',
+    file: 'app.js',
+    find: "  if (logDetailId !== null) return closeLogDetail;",
+    replace: "  if (logDetailId !== null) return closeTaskDetail;"
+  },
+  {
+    group: '手指滑动：下拉返回、左右滑切换标签',
+    name: '清单页没接上左右滑',
+    file: 'app.js',
+    find: "  enableTagSwipe(body, listTagSet);",
+    replace: "  // enableTagSwipe(body, listTagSet);"
+  },
+  {
+    group: '手指滑动：下拉返回、左右滑切换标签',
+    name: '清单页左右滑改的是打卡页的标签',
+    file: 'app.js',
+    find: "  enableTagSwipe(body, listTagSet);",
+    replace: "  enableTagSwipe(body, logTagSet);"
+  },
+  {
+    group: '手指滑动：下拉返回、左右滑切换标签',
+    name: '打卡页没接上左右滑',
+    file: 'logs.js',
+    find: "  enableTagSwipe(body, logTagSet);",
+    replace: "  // enableTagSwipe(body, logTagSet);"
+  },
+  {
+    group: '手指滑动：下拉返回、左右滑切换标签',
+    name: '左右滑方向反了',
+    file: 'tags.js',
+    find: "+ (dx < 0 ? 1 : -1);",
+    replace: "+ (dx < 0 ? -1 : 1);"
+  },
+  {
+    group: '手指滑动：下拉返回、左右滑切换标签',
+    name: '到头了绕回另一头',
+    file: 'tags.js',
+    find: "  return index >= 0 && index < order.length ? order[index] : null;",
+    replace: "  return order[(index + order.length) % order.length];"
+  },
+  {
+    group: '手指滑动：下拉返回、左右滑切换标签',
+    name: '左右滑的顺序和顶部不一样（已归档排在前面）',
+    file: 'tags.js',
+    find: "  return ['all', ...set.tags().map((tag) => tag.id), 'archived'];",
+    replace: "  return ['all', 'archived', ...set.tags().map((tag) => tag.id)];"
+  },
+  {
+    group: '手指滑动：下拉返回、左右滑切换标签',
+    name: '到头了没有橡皮筋，和能翻过去时一样挪',
+    file: 'tags.js',
+    find: "=== null ? 0.15 : 0.5;",
+    replace: "=== null ? 0.5 : 0.5;"
+  },
+  {
+    group: '手指滑动：下拉返回、左右滑切换标签',
+    name: '列表没滑够，松手不弹回',
+    file: 'tags.js',
+    find: "        springBack(scroller);\n        return;",
+    replace: "        return;"
+  },
+  {
+    group: '手指滑动：下拉返回、左右滑切换标签',
+    name: '换了标签不收起"改名 / 删除"',
+    file: 'tags.js',
+    find: "      managingTagId = null;\n      renamingTagId = null;\n      render();\n      showSwipedIn(dx);",
+    replace: "      render();\n      showSwipedIn(dx);"
+  },
+  {
+    group: '手指滑动：下拉返回、左右滑切换标签',
+    name: '换到的标签不挪进看得见的地方',
+    file: 'tags.js',
+    find: "    bar.scrollLeft += (chipRect.left + chipRect.width / 2) - (barRect.left + barRect.width / 2);\n",
+    replace: ""
+  },
+
   // ---------- 测试工具自己 ----------
   {
     group: '测试工具',

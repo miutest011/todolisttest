@@ -519,6 +519,128 @@ function shouldIgnoreClick() {
   return true;
 }
 
+// ---- 手指滑动：详情页往下拉返回、列表左右滑切换标签 ----
+// 两个手势共用一套"先看往哪边走，再决定管不管"：
+// 手指刚动的那几像素看不出想干什么，走过 MOVE_THRESHOLD 才定方向——
+// 顺着我们要的方向走，这一下就归我们（拦住页面滚动）；不顺，这一整下都不管，页面照常滚。
+// 为什么定下来就不改：边滑边改主意的话，页面会一会儿滚一会儿不滚，手感很乱。
+// 只认手指：电脑上鼠标按住一拖是拖动排序，而且电脑上点返回键、点标签都很方便，用不着
+const SWIPE_DISTANCE = 80;       // 滑过这么远，松手就算数
+const FLING_TIME = 300;          // 从按下到松手不超过这么多毫秒，算"甩了一下"……
+const FLING_DISTANCE = 24;       // ……甩的话滑这么远就够了。太短的不算，免得手指抖一下就触发
+
+// options：
+//   axis：'x' 左右 / 'y' 上下
+//   canStart(event)：按下时问一句，这一下要不要跟
+//   canLock(distance)：方向定下来时再问一句（比如下拉返回只要往下的）。distance 往右 / 往下为正
+//   onMove(distance)：手指在动，让页面跟着走
+//   onRelease(distance, committed)：手指离开。committed = 滑得够远或者甩得够快；
+//     被系统打断（来电话之类，pointercancel）也会调它，那时 committed 一定是 false
+function trackSwipe(target, options) {
+  target.addEventListener('pointerdown', (event) => {
+    if (event.pointerType !== 'touch' || !options.canStart(event)) return;
+
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startTime = event.timeStamp;
+    let state = 'deciding';      // 'deciding' 还没定方向 / 'mine' 归我们 / 'ignored' 这一下不管
+    let distance = 0;
+
+    function onPointerMove(moveEvent) {
+      const dx = moveEvent.clientX - startX;
+      const dy = moveEvent.clientY - startY;
+      const along = options.axis === 'x' ? dx : dy;     // 顺着我们要的方向走了多远
+      const across = options.axis === 'x' ? dy : dx;
+
+      if (state === 'deciding') {
+        if (Math.hypot(dx, dy) <= MOVE_THRESHOLD) return;
+        // 屏幕上有浮起来的副本，说明是长按之后在拖任务，这一下归拖动，不是滑动
+        const draggingItem = document.querySelector('.drag-ghost') !== null;
+        const mine = Math.abs(along) > Math.abs(across) && !draggingItem && options.canLock(along);
+        state = mine ? 'mine' : 'ignored';
+      }
+      if (state !== 'mine') return;
+
+      distance = along;
+      options.onMove(distance);
+    }
+
+    // 拦住页面滚动（包括 iPhone 上拉到顶再往下拉时整页那一下回弹）。
+    // 和拖动一样，必须写成 passive: false 浏览器才许拦
+    function onTouchMove(touchEvent) {
+      if (state === 'mine') touchEvent.preventDefault();
+    }
+
+    function onEnd(endEvent) {
+      document.removeEventListener('pointermove', onPointerMove);
+      document.removeEventListener('pointerup', onEnd);
+      document.removeEventListener('pointercancel', onEnd);
+      document.removeEventListener('touchmove', onTouchMove);
+      if (state !== 'mine') return;
+
+      const far = Math.abs(distance) >= SWIPE_DISTANCE;
+      const fast = endEvent.timeStamp - startTime <= FLING_TIME && Math.abs(distance) >= FLING_DISTANCE;
+      options.onRelease(distance, endEvent.type === 'pointerup' && (far || fast));
+    }
+
+    document.addEventListener('pointermove', onPointerMove);
+    document.addEventListener('pointerup', onEnd);
+    document.addEventListener('pointercancel', onEnd);
+    document.addEventListener('touchmove', onTouchMove, { passive: false });
+  });
+}
+
+// 松手时没滑够：让跟着手指挪开的那块慢慢回到原位（不加过渡的话是"啪"地跳回去）
+function springBack(element) {
+  element.style.transition = 'transform 0.2s ease-out';
+  element.style.transform = '';
+}
+
+// 这些情况下手指一动不当成手势：
+// 按在输入框里（可能是在选文字、挪光标）；正在打字（键盘开着，这时一滑多半是想收键盘或滚动）；
+// 有菜单开着（手指一碰应该先是关菜单）
+function canStartSwipe(event) {
+  if (event.target.closest && event.target.closest('input, textarea, select')) return false;
+  return !isTextField(document.activeElement) && openMenuKey === null;
+}
+
+// 现在在哪个详情页，就返回"从这个详情页回去"的函数；不在详情页返回 null
+function detailPageBack() {
+  if (detailIndex !== null) return closeTaskDetail;
+  if (logDetailId !== null) return closeLogDetail;
+  return null;
+}
+
+// 详情页往下拉回到列表（任务详情、打卡详情都是）。
+// 挂在整个网页上，而不是详情页那个元素上：详情页内容短的时候，下面一大片空白不属于它，
+// 可按在空白处往下拉也应该能回去。所以只在这里挂一次，按下时再看现在是不是在详情页
+trackSwipe(document, {
+  axis: 'y',
+  canStart: (event) => {
+    if (!appEl || !appEl.isConnected || detailPageBack() === null) return false;
+    // 页面往下翻过了，这时往下拉是想翻回上面去，不是想返回
+    if (window.scrollY > 0) return false;
+    return canStartSwipe(event);
+  },
+  canLock: (dy) => dy > 0,     // 只管往下拉；往上是正常翻页
+  onMove: (dy) => {
+    const page = appEl.querySelector('.detail-page');
+    if (!page) return;
+    // 整页跟着手指往下走，一眼看得出"再拉就回去了"
+    page.style.transition = 'none';
+    page.style.transform = `translateY(${dy}px)`;
+  },
+  onRelease: (dy, committed) => {
+    const back = detailPageBack();
+    if (committed && back) {
+      back();
+      return;
+    }
+    const page = appEl.querySelector('.detail-page');
+    if (page) springBack(page);
+  }
+});
+
 // 指针停在哪个清单的任务区上（把整块区域都算进去，这样拖进空清单也容易对准）。
 // 只看纵向位置：任务是竖着排的，拖动时指针很容易偏到卡片左右外面去，
 // 要求横向也对准的话会经常判不中
@@ -604,6 +726,7 @@ function createTasksView() {
     key: 'page-lists',
     items: [{ text: '新建清单', action: openCategoryDraft }]
   }));
+  enableTagSwipe(body, listTagSet);   // 列表区左右滑切换标签（在 tags.js 里，打卡页也用）
 
   const shown = categoriesInFilter(listTagFilter);
   const message = listEmptyMessage(shown);
@@ -1541,19 +1664,20 @@ document.addEventListener('click', () => {
 });
 
 // ---- 详情页 ----
+// 从任务详情页回到列表。左上角返回键和往下拉都走这里
+function closeTaskDetail() {
+  detailIndex = null;
+  editingDueFor = null;
+  render();
+}
+
 function createDetailPage(index) {
   const todo = todos[index];
   const page = document.createElement('div');
+  page.className = 'detail-page';     // 往下拉返回时靠这个找到要跟着手指走的整页
 
   // 顶部一左一右两个悬浮圆按钮，⋯ 菜单从卡片里挪到了右上角
-  const header = createPageHeader(
-    () => {
-      detailIndex = null;
-      editingDueFor = null;
-      render();
-    },
-    { key: 'task-' + index, items: todoMenuItems(index) }
-  );
+  const header = createPageHeader(closeTaskDetail, { key: 'task-' + index, items: todoMenuItems(index) });
 
   const card = document.createElement('div');
   card.className = todo.status === 'active' ? 'detail-card' : 'detail-card ' + todo.status;

@@ -16,7 +16,7 @@
 //   }
 //
 // 为什么抽出来：两页的标签行要是各写一份，迟早会改了一边忘了另一边，长得越来越不一样。
-// 用到 app.js 里的 render、closeMenuIfOpen、createRenameInput、longPressDelay、MOVE_THRESHOLD，
+// 用到 app.js 里的 render、closeMenuIfOpen、createRenameInput、longPressDelay、MOVE_THRESHOLD、trackSwipe 这些，
 // 所以页面里排在 app.js 后面加载。
 
 // "所有"和"已归档"是顶部的两个固定项，用户建的标签不能叫这两个名字，不然分不清
@@ -85,6 +85,73 @@ function createTagBar(set, menu = null) {
   if (managing) box.appendChild(createTagManager(set, managing));
 
   return box;
+}
+
+// ---- 列表区左右滑，切换顶部标签 ----
+// 顺序和顶部一样：所有 → 用户的标签 → 已归档。
+// 手指往左滑 = 换到右边那个，和翻书、iPhone 相册的方向一样。到头了就停住，不绕回另一头：
+// 绕回去的话滑着滑着突然从"已归档"跳回"所有"，很容易迷路
+function filterOrder(set) {
+  return ['all', ...set.tags().map((tag) => tag.id), 'archived'];
+}
+
+// dx < 0（往左滑）→ 右边那个；dx > 0 → 左边那个。那边没有了返回 null
+function neighborFilter(set, dx) {
+  const order = filterOrder(set);
+  const index = order.indexOf(set.filter()) + (dx < 0 ? 1 : -1);
+  return index >= 0 && index < order.length ? order[index] : null;
+}
+
+// scroller：列表那一块（createScrollingPage 的 body）。按在里面任何地方都能滑，任务、打卡项目上也行——
+// 横着滑不会误触长按拖动：手指一动超过 MOVE_THRESHOLD，长按就作废了
+function enableTagSwipe(scroller, set) {
+  trackSwipe(scroller, {
+    axis: 'x',
+    canStart: canStartSwipe,
+    canLock: () => true,
+    onMove: (dx) => {
+      // 那边还有标签：列表跟着手指挪一半，看得出"要翻过去了"；
+      // 已经到头：只挪一点点，像拉橡皮筋，告诉你那边没有了
+      const factor = neighborFilter(set, dx) === null ? 0.15 : 0.5;
+      scroller.style.transition = 'none';
+      scroller.style.transform = `translateX(${dx * factor}px)`;
+    },
+    onRelease: (dx, committed) => {
+      const next = committed ? neighborFilter(set, dx) : null;
+      if (next === null) {
+        springBack(scroller);
+        return;
+      }
+
+      set.setFilter(next);
+      // 和点标签一样，换了标签就收起长按出来的"改名 / 删除"
+      managingTagId = null;
+      renamingTagId = null;
+      render();
+      showSwipedIn(dx);
+    }
+  });
+}
+
+// 换完标签之后：
+// 1. 顶部选中的那个标签可能在屏幕外面（标签多、要横着滑才看得到），把它挪到标签行中间
+// 2. 新列表从手指滑走的反方向轻轻滑进来，不然内容是"瞬间换掉"的，看不出刚才翻了一页
+function showSwipedIn(dx) {
+  const chip = appEl.querySelector('.tag-bar .tag-chip.active');
+  if (chip) {
+    const bar = chip.parentNode;
+    const barRect = bar.getBoundingClientRect();
+    const chipRect = chip.getBoundingClientRect();
+    bar.scrollLeft += (chipRect.left + chipRect.width / 2) - (barRect.left + barRect.width / 2);
+  }
+
+  const scroller = appEl.querySelector('.page-scroll');
+  if (scroller && scroller.animate) {   // 老浏览器没有 animate，没动画也不影响用
+    scroller.animate(
+      [{ transform: `translateX(${dx < 0 ? 40 : -40}px)`, opacity: 0 }, { transform: 'none', opacity: 1 }],
+      { duration: 200, easing: 'ease-out' }
+    );
+  }
 }
 
 // tag 为 null 表示"所有""已归档"这两个固定项，它们不能长按改名删除

@@ -429,6 +429,7 @@ function createLogsView() {
   }
 
   top.appendChild(createTagBar(logTagSet));
+  enableTagSwipe(body, logTagSet);    // 列表区左右滑切换标签（在 tags.js 里）
 
   const items = logItemsInFilter(logTagFilter);
   if (items.length === 0) {
@@ -587,25 +588,27 @@ function cancelLogItemDraft() {
 }
 
 // ---- 打卡详情页 ----
+// 回到打卡列表。左上角返回键和往下拉（app.js 的 trackSwipe）都走这里
+function closeLogDetail() {
+  logDetailId = null;
+  editingLogItemId = null;
+  addingTagIn = null;
+  render();
+}
+
 function createLogDetailPage(id) {
   const item = findLogItem(id);
   const page = document.createElement('div');
-
-  const goBack = () => {
-    logDetailId = null;
-    editingLogItemId = null;
-    addingTagIn = null;
-    render();
-  };
+  page.className = 'detail-page';     // 往下拉返回时靠这个找到要跟着手指走的整页
 
   // 万一这个项目已经不在了，就只留一个返回按钮
   if (!item) {
-    page.appendChild(createPageHeader(goBack));
+    page.appendChild(createPageHeader(closeLogDetail));
     return page;
   }
 
   // 顶部一左一右两个悬浮圆按钮，菜单挪到了右上角
-  page.appendChild(createPageHeader(goBack, {
+  page.appendChild(createPageHeader(closeLogDetail, {
     key: 'log-' + id,
     items: [
       { text: '重命名', action: () => { editingLogItemId = id; render(); } },
