@@ -706,3 +706,56 @@ test('页面骨架：手机那么宽时顶部只留 24px，电脑上才留 60px'
   assertEqual(phone.paddingTop, '24px', '手机上只让出状态栏的位置（没有刘海时就是 24px）');
   assertEqual(desktop.paddingTop, '60px', '电脑上和 body 的上边距一样');
 });
+
+test('页面骨架：今天页的标题和日期固定在上面，任务在下面滚', () => {
+  const { root } = setup({
+    categories: ['工作'],
+    todos: [{ text: '交报告', status: 'active', category: '工作', dueAt: isoAfter(60) }],
+    expandedCategory: '工作'
+  });
+  click(tabButton(root, '今天'));
+
+  const top = root.querySelector('.page-top');
+  const scroller = root.querySelector('.page-scroll');
+  assertEqual(top.querySelector('h1').textContent, '今天', '标题在上面');
+  assert(top.querySelector('.view-subtitle'), '日期在上面');
+  assert(scroller.querySelector('.today-section'), '任务分组在下面滚');
+  assertEqual(top.querySelector('.today-section'), null, '任务不能跑到固定的那块里');
+});
+
+test('页面骨架：今天页没有任务时，提示也在下面那块', () => {
+  const { root } = setup({ categories: ['工作'] });
+  click(tabButton(root, '今天'));
+
+  assert(root.querySelector('.page-scroll .empty-state'), '空状态提示在滚动区里');
+});
+
+// 用户截图发现：点 + 打开新建面板、再关掉之后，最上面的状态栏（时间、电量那一条）变成了灰色。
+// 那个灰正好是暗色遮罩叠在白底上的颜色 —— iPhone 会照着贴在页面最顶上的东西给状态栏上色，
+// 遮罩一盖到顶，状态栏就被染灰，关掉后有时不变回来。修了两层，两条测试各盯一层
+test('状态栏：新建面板的暗色遮罩不盖住最上面的状态栏', async () => {
+  await useAppStyles();
+  setup();
+
+  // 测试页没有刘海，"状态栏的高度"是 0，量位置量不出区别，只能看样式里是不是让开了状态栏
+  const sheet = [...document.styleSheets].find((s) => s.ownerNode && s.ownerNode.textContent.includes('--text-input'));
+  const rule = [...sheet.cssRules].find((r) => r.selectorText === '.popup-overlay');
+  assert(rule, '找得到遮罩的样式');
+  assert(rule.style.top.includes('safe-area-inset-top'), '遮罩的顶边要从状态栏下面开始，实际 top：' + rule.style.top);
+});
+
+test('状态栏：固定在屏幕上的页面有白色底，而不是透明的', async () => {
+  await useAppStyles();
+  const { root } = setup({ categories: ['工作'], logItems: [logItem('喝水')] });
+
+  const check = (label) => {
+    const color = getComputedStyle(root.querySelector('.page')).backgroundColor;
+    assertEqual(color, 'rgb(255, 255, 255)', `${label}：透明的话，iPhone 可能一直按之前的颜色（比如遮罩的灰）给状态栏上色`);
+  };
+
+  check('清单页');
+  click(tabButton(root, '今天'));
+  check('今天页');
+  openLogsTab(root);
+  check('打卡页');
+});

@@ -838,8 +838,8 @@ function startOfToday() {
 }
 
 function createTodayView() {
-  const view = document.createElement('div');
-  view.className = 'today-view';
+  // 标题和日期固定在上面，下面的任务自己滚（骨架见 createScrollingPage）
+  const { page: view, top, body } = createScrollingPage('today-view');
 
   const dayStart = startOfToday();
   const dayEnd = dayStart + 24 * 60 * 60 * 1000;   // 明天零点
@@ -863,26 +863,26 @@ function createTodayView() {
   // "今天"页保留标题：它说明的是"你正在看哪一页"，不是 App 名字
   const title = document.createElement('h1');
   title.textContent = '今天';
-  view.appendChild(title);
+  top.appendChild(title);
 
   const date = document.createElement('div');
   date.className = 'view-subtitle';
   date.textContent = formatDate(nowFn());
-  view.appendChild(date);
+  top.appendChild(date);
 
   if (overdue.length === 0 && today.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'empty-state';
     empty.textContent = '今天没有到期的任务。给任务设置截止时间后，它们会出现在这里。';
-    view.appendChild(empty);
+    body.appendChild(empty);
     return view;
   }
 
   if (overdue.length > 0) {
-    view.appendChild(createTodaySection('已过期', overdue, 'overdue'));
+    body.appendChild(createTodaySection('已过期', overdue, 'overdue'));
   }
   if (today.length > 0) {
-    view.appendChild(createTodaySection('今天到期', today, ''));
+    body.appendChild(createTodaySection('今天到期', today, ''));
   }
 
   return view;
@@ -1247,7 +1247,7 @@ function createPageHeader(onBack, menu) {
   return header;
 }
 
-// ---- 清单页、打卡页共用的页面骨架：上面固定，下面自己滚 ----
+// ---- 清单页、今天页、打卡页共用的页面骨架：上面固定，下面自己滚 ----
 // 为什么不让整个网页一起滚：那样标签行会跟着滚走，右边还会冒出网页的滚动条，
 // 滑到头时整页还会弹一下 —— 一看就是网页，不像 App。
 // 所以整个页面钉在屏幕上不动（样式在 style.css 的 .page），只让下面装列表的那一块自己滚，并且把滚动条藏起来。

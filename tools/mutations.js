@@ -668,6 +668,28 @@ const MUTATIONS = [
     replace: "  @media (max-width: 600px) {\n    .page-never {\n      padding-top: max(var(--space-6), env(safe-area-inset-top));"
   },
 
+  {
+    group: '清单页、打卡页：上面固定、下面自己滚',
+    name: '今天页的标题放进了会滚的那块',
+    file: 'app.js',
+    find: "  title.textContent = '今天';\n  top.appendChild(title);",
+    replace: "  title.textContent = '今天';\n  body.appendChild(title);"
+  },
+  {
+    group: '清单页、打卡页：上面固定、下面自己滚',
+    name: '新建面板的遮罩又盖到了状态栏（关掉后顶上留一条灰）',
+    file: 'style.css',
+    find: "    top: env(safe-area-inset-top);\n    right: 0;",
+    replace: "    top: 0;\n    right: 0;"
+  },
+  {
+    group: '清单页、打卡页：上面固定、下面自己滚',
+    name: '固定的页面没有底色（状态栏可能停在灰色上）',
+    file: 'style.css',
+    find: "    background: var(--surface);\n    top: 0;",
+    replace: "    top: 0;"
+  },
+
   // ---------- 测试工具自己 ----------
   {
     group: '测试工具',
