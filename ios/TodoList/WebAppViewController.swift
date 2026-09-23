@@ -24,9 +24,17 @@ final class WebAppViewController: UIViewController {
         config.allowsInlineMediaPlayback = true
 
         webView = WKWebView(frame: .zero, configuration: config)
+        // 网页里的 confirm() 要靠下面的 WKUIDelegate 接住。不接的话它不弹窗、直接返回"取消"，
+        // 表现就是"点了没反应"——删清单、删打卡、导入数据这些都会静悄悄失败（真踩过）
+        webView.uiDelegate = self
         webView.scrollView.bounces = false          // 整页不回弹：里面的列表自己会滚，见 style.css 的 .page
         webView.scrollView.contentInsetAdjustmentBehavior = .never   // 刘海和底部横条由网页自己让位（env(safe-area-inset-*)）
         webView.isOpaque = false
+        #if DEBUG
+        // 让 Mac 上的 Safari 能连进来看这块网页（Safari → 开发 → 模拟器/你的手机）。
+        // 出问题时能直接看控制台报错，比猜快得多
+        if #available(iOS 16.4, *) { webView.isInspectable = true }
+        #endif
 
         view.backgroundColor = .white
         webView.translatesAutoresizingMaskIntoConstraints = false
@@ -114,5 +122,38 @@ extension WebAppViewController: UIDocumentPickerDelegate {
 
     func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
         giveFileBackToWebPage(nil)
+    }
+}
+
+// MARK: - 网页要弹窗时（confirm / alert / prompt）
+// 系统不会自动帮我们弹，必须自己接。网页那边用的是 confirm：删清单、删打卡记录、导入数据前都要问一句
+extension WebAppViewController: WKUIDelegate {
+
+    func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
+        let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "好", style: .default) { _ in completionHandler() })
+        present(alert, animated: true)
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
+        let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+        // 这些问句问的都是"要不要删 / 要不要覆盖"，所以"确定"用红色，别让人手滑
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel) { _ in completionHandler(false) })
+        alert.addAction(UIAlertAction(title: "确定", style: .destructive) { _ in completionHandler(true) })
+        present(alert, animated: true)
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String,
+                 defaultText: String?, initiatedByFrame frame: WKFrameInfo,
+                 completionHandler: @escaping (String?) -> Void) {
+        let alert = UIAlertController(title: nil, message: prompt, preferredStyle: .alert)
+        alert.addTextField { field in field.text = defaultText }
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel) { _ in completionHandler(nil) })
+        alert.addAction(UIAlertAction(title: "好", style: .default) { [weak alert] _ in
+            completionHandler(alert?.textFields?.first?.text)
+        })
+        present(alert, animated: true)
     }
 }

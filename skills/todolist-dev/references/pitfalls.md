@@ -113,6 +113,10 @@ function logDateKey(iso) {
 - **图标别放进 `Assets.xcassets`。** 编译图标目录要用 Xcode 的 `actool`，它在"只装了 Xcode、没装模拟器运行环境"的机器上
   直接报 `Failed to locate any simulator runtime`——命令行和 Xcode 里按 ▶️ 都过不去，要么下 7GB 的模拟器，要么绕开。
   绕法：几张 PNG 直接进应用包，在 `Info.plist` 的 `CFBundleIconFiles` 里列出来。
+- **WKWebView 默认吞掉网页的 `confirm()` / `alert()`**：不弹窗、直接返回"取消"，表现是**点了没反应且不报错**。
+  这个项目里六处删除确认和导入数据全靠 `confirm()`，外壳不接（`WKUIDelegate`）的话它们全部静悄悄失效——用户实际点出来的。
+  **教训**：网页搬进壳里之后，凡是会弹系统界面的交互（确认框、选文件、分享）都要在模拟器里真点一遍，
+  它们在浏览器里全都正常，只在壳里才坏。
 - **没有真机也能验证：用模拟器。** 本地通知在模拟器里是真弹的，连"应用已杀掉"这种情况都能验
   （做法和命令见 `ios/README.md` 的"在模拟器里验证"）。**截图要掐着点**，横幅几秒就收走，晚一分钟截就只剩桌面、
   会误判成"没弹"——真踩过，靠 `log show` 里的 `Deliver local notification` 才看清事实。**手势和键盘这类手感，模拟器不算数。**
