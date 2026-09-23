@@ -498,7 +498,8 @@ test('新建清单：在标签行右边的 ⋯ 里；打卡页的标签行没有
   const { root } = setup({ categories: ['工作'] });
 
   click(root.querySelector('.tag-row .menu-btn'));
-  assertEqual(textsOf(root, '.tag-row .menu-item'), ['新建清单'], '菜单里是新建清单');
+  assertEqual(textsOf(root, '.tag-row .menu-item'), ['新建清单', '导出数据', '导入数据'],
+    '菜单里是新建清单，后面跟着导出 / 导入（都是一年用不了几次、但要找得到的事）');
   click(menuItemNamed(root, '新建清单'));
   assertEqual(root.querySelector('.popup-title').textContent, '新建清单', '打开的是新建清单的面板');
   click(root.querySelector('.popup-cancel'));

@@ -692,6 +692,16 @@
 
   /* 清单名比任务文字大一号、更粗、更深，
      这样一眼就能看出"清单是标题、任务是内容"的层级 */
+  /* 导出 / 导入之后的那句话。淡蓝底，和白色的任务卡片区分开 */
+  .data-notice {
+    margin-bottom: var(--space-3);
+    padding: var(--space-3);
+    border-radius: var(--radius-lg);
+    background: #eaf2fb;
+    font-size: var(--text-sm);
+    color: var(--text-body);
+  }
+
   /* 展开的空清单下面那行小字：让人看得出"点开了，只是里面没东西" */
   .empty-list-hint {
     padding: var(--space-2) var(--space-1) var(--space-3);

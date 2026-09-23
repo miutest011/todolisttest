@@ -1,2 +1,6 @@
 # macOS 在每个文件夹里自动生成的系统文件，和项目无关
 .DS_Store
+
+# Xcode 的编译产物和个人设置（每次编译都会重新生成，不进仓库）
+ios/build/
+xcuserdata/

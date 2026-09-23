@@ -121,13 +121,15 @@ test('右滑返回：详情页会伸到屏幕外面，所以整个网页横向�
   await useAppStyles();
   const root = openTaskDetailPage();
 
+  const page = root.querySelector('.detail-page');
+  const restingRight = page.getBoundingClientRect().right;
   fingerPress(root.querySelector('.detail-title'));
   fingerMoveTo(220, 100);
-  const page = root.querySelector('.detail-page');
-  const stickingOut = page.getBoundingClientRect().right > window.innerWidth;
+  const movedRight = page.getBoundingClientRect().right - restingRight;
   fingerUp();
 
-  assert(stickingOut, '先确认详情页真的被推出屏幕右边了');
+  // 不拿屏幕宽度比：测试页窗口多宽都可能，手机上这 120px 早就出界了
+  assertEqual(Math.round(movedRight), 120, '先确认详情页真的被往右推了出去');
   // 夹在 html 上（body 上不管用），而且用 clip 不用 hidden，免得 iPhone 上连累上下滚动
   assertEqual(getComputedStyle(document.documentElement).overflowX, 'clip',
     '没夹住的话，滑的时候整个网页能跟着横着拖，页面会左右晃、右边露出一条白');

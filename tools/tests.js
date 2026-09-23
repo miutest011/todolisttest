@@ -31,6 +31,10 @@ function setup(data = {}) {
   useLongPressDelay(0);              // 长按判定改成 0，测试不用真等半秒
   // 撤销提示的时长恢复默认。有测试会把它改短，不还原的话会泄漏到后面的测试里
   useToastDuration(4000);
+  // 提醒默认没人接手（纯网页的样子）；存文件、选文件也换回网页的做法
+  useReminderScheduler(null);
+  useFileSaver(null);
+  useFilePicker(null);
 
   // 假的通知：把弹过的内容记下来，不会真的弹到你屏幕上
   const notifications = [];

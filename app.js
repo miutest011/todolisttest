@@ -79,6 +79,17 @@ function useNotifier(newNotifier) {
   notifier = newNotifier;
 }
 
+// 到点的提醒由谁来弹。
+// 纯网页版没人接手（null）：只能在网页开着的时候自己弹（见 checkReminders）。
+// 装成 iOS 应用之后由外壳接手：把"什么时候、弹什么字"整张单子交给系统，
+// 到点由 iOS 弹通知 —— app 关着也会响，这是网页怎么写都做不到的。
+// 接手的人要有 replaceAll(提醒单子)：每次都是整张单子换一遍，所以单子里不用带 id
+let reminderScheduler = null;
+
+function useReminderScheduler(scheduler) {
+  reminderScheduler = scheduler;
+}
+
 // 提醒的可选项。minutes 表示提前多少分钟，null 表示不提醒
 const REMIND_OPTIONS = [
   { label: '不提醒', minutes: null },
@@ -116,6 +127,8 @@ let expandedGroups = [];    // 哪些"已完成/已放弃"分组是展开的，�
 let currentTab = 'tasks';   // 底部标签栏当前在哪一页：tasks（清单）/ today（今天）/ logs（打卡）
 let suppressNextClick = false;  // 拖动结束后紧跟着的那一次点击要忽略掉
 let listTagFilter = 'all';  // 清单页顶部选中了哪个：'all'（所有）/ 'archived'（已归档）/ 某个标签的 id
+let lastRemindersJson = null;   // 上次交给系统的提醒单子，没变就不再打扰它（重画很频繁）
+let dataNotice = null;      // 导出 / 导入之后给用户的一句话
 
 // 把"临时"的界面状态清空（数据状态不动）
 function resetViewState() {
@@ -131,6 +144,8 @@ function resetViewState() {
   currentTab = 'tasks';      // 每次打开都从"清单"页开始
   suppressNextClick = false; // 万一上一次拖拽没正常收尾，别把下一次点击也吞掉
   listTagFilter = 'all';     // 清单页每次打开都从"所有"开始
+  lastRemindersJson = null;  // 换了一份数据，下次重画要重新交一张单子
+  dataNotice = null;
   resetTagViewState();       // 标签输入框、长按管理条（在 tags.js 里，两页共用）
   resetLogViewState();       // 打卡模块自己的界面状态（在 logs.js 里）
 }
@@ -139,6 +154,12 @@ function resetViewState() {
 function initApp(element) {
   appEl = element;
   resetViewState();
+  reloadFromStorage();
+  render();
+}
+
+// 把存储里的数据全读进内存。启动时用，导入别人的数据之后也用（那时界面状态不用动）
+function reloadFromStorage() {
   categories = loadCategories();
   todos = loadTodos();
   expandedCategory = loadExpandedCategory();   // 要对照清单列表，所以排在读清单之后
@@ -146,10 +167,180 @@ function initApp(element) {
   categoryMeta = loadCategoryMeta();
   logTags = loadLogTags();     // 同理，打卡也是先读标签再读项目
   logItems = loadLogItems();
-  render();
+}
+
+// 点"导出数据"：把内容算出来，交给浏览器下载（装成应用之后是系统的分享）
+function startExport() {
+  dataNotice = null;
+  return exportData()
+    .then((text) => {
+      fileSaver(exportFileName(), text);
+      dataNotice = '已导出，存好这个文件就等于备份了一份';
+      render();
+    })
+    .catch((error) => {
+      dataNotice = '导出失败：' + errorText(error);
+      render();
+    });
+}
+
+// 点"导入数据"：先问一句（会覆盖现在的全部数据），再让用户挑文件
+function startImport() {
+  dataNotice = null;
+  if (!confirmFn('导入会用文件里的数据替换掉现在的全部内容（包括打卡记录），确定吗？')) {
+    return Promise.resolve();
+  }
+
+  return Promise.resolve(filePicker())
+    .then((text) => {
+      if (text === null || text === undefined) return;   // 用户点了取消
+      return Promise.resolve(importData(text)).then(() => {
+        dataNotice = '导入完成';
+        render();
+      });
+    })
+    .catch((error) => {
+      dataNotice = '导入失败：' + errorText(error);
+      render();
+    });
+}
+
+function errorText(error) {
+  return error && error.message ? error.message : '文件读不出来';
 }
 
 // ---- 读写存储 ----
+
+// ---- 导出 / 导入全部数据 ----
+// 为什么要有：装成 iOS 应用之后，应用里那份数据和 Safari 里那份是各存各的（浏览器就是这么规定的），
+// 搬家、备份、换手机全靠它。导出的就是一个 .json 文件，用记事本打开也看得懂。
+//
+// 附件（图片、视频、录音）存在 IndexedDB 里，没法直接写进 JSON，
+// 所以转成 base64（把二进制写成一串字母数字）一起带走。附件多的话文件会挺大，这是必然的
+const EXPORT_VERSION = 1;
+
+// 要带走的存储键。加了新的存储键，记得加进来 —— 有测试盯着这件事
+const EXPORTED_KEYS = ['categories', 'todos', 'expandedCategory', 'listTags', 'categoryMeta', 'logTags', 'logItems'];
+
+// 导出的文件存到哪：网页版交给浏览器下载
+function downloadFile(filename, text) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+// 装成应用之后由外壳换成系统的"分享"。传 null 换回网页的做法
+let fileSaver = downloadFile;
+
+function useFileSaver(saver) {
+  fileSaver = saver || downloadFile;
+}
+
+// 让用户挑一个文件，挑好了给出它的内容；挑到一半取消的话给 null。
+// 做成可替换的有两个原因：测试里不能真弹系统的选文件窗口（会把整套测试卡在那儿），
+// 装成应用之后外壳也要换成系统自己的文件选择
+function pickFile() {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json,.json';
+    input.addEventListener('change', () => {
+      const file = input.files[0];
+      resolve(file ? file.text() : null);
+    });
+    input.click();
+  });
+}
+
+let filePicker = pickFile;
+
+function useFilePicker(picker) {
+  filePicker = picker || pickFile;
+}
+
+function exportFileName() {
+  const d = nowFn();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `待办清单-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}.json`;
+}
+
+// 把 Blob 转成 base64 字符串（FileReader 给的是 "data:类型;base64,内容"，取逗号后面那截）
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+function base64ToBlob(base64, type) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new Blob([bytes], { type: type });
+}
+
+// 返回导出文件的内容（一段 JSON 文字）
+function exportData() {
+  const data = {};
+  EXPORTED_KEYS.forEach((key) => {
+    const saved = storage.getItem(key);
+    if (saved !== null) data[key] = JSON.parse(saved);
+  });
+
+  // 附件的内容按 id 一个个取出来。取不到的（数据对不上、文件早没了）跳过，
+  // 不能因为一个附件丢了就整个导不出来
+  const wanted = todos.flatMap((todo) => todo.attachments || []);
+  const loading = wanted.map((attachment) => (
+    Promise.resolve(blobStore.load(attachment.id))
+      .then((blob) => (blob ? blobToBase64(blob).then((base64) => ({ id: attachment.id, type: blob.type, base64: base64 })) : null))
+      .catch(() => null)
+  ));
+
+  return Promise.all(loading).then((files) => JSON.stringify({
+    app: 'todolist',
+    version: EXPORT_VERSION,
+    exportedAt: nowFn().toISOString(),
+    data: data,
+    files: files.filter((file) => file !== null)
+  }, null, 2));
+}
+
+// 导入是"搬家"，不是"合并"：整份数据换掉。
+// 合并要处理重名清单、同一条任务算不算重复，规则很难讲清楚，也容易悄悄弄错，不如说明白"会覆盖"
+function importData(text) {
+  const parsed = JSON.parse(text);   // 不是 JSON 的话这里就抛错，由调用的地方提示
+  if (!parsed || parsed.app !== 'todolist') {
+    throw new Error('这不像是本应用导出的文件');
+  }
+  if (parsed.version > EXPORT_VERSION) {
+    throw new Error('这个文件是更新版本的应用导出的，先把应用更新一下');
+  }
+
+  EXPORTED_KEYS.forEach((key) => {
+    // 文件里没有的键要删掉，不能留着旧数据 —— 否则导入一份"没有打卡项目"的备份之后，
+    // 旧的打卡项目还在，看起来就像导入失败了
+    if (parsed.data && key in parsed.data) {
+      storage.setItem(key, JSON.stringify(parsed.data[key]));
+    } else {
+      storage.removeItem(key);
+    }
+  });
+
+  const files = parsed.files || [];
+  return Promise.all(files.map((file) => blobStore.save(file.id, base64ToBlob(file.base64, file.type))))
+    .then(() => {
+      reloadFromStorage();
+      render();
+    });
+}
+
 function loadCategories() {
   const saved = storage.getItem('categories');
   return saved ? JSON.parse(saved) : [...DEFAULT_CATEGORIES];
@@ -330,6 +521,9 @@ function render() {
   // 重画时旧输入框被删掉，浏览器不一定会为它发"失去焦点"。画完按实际情况再对一遍，
   // 否则可能出现：输入框早没了，底部标签栏却一直藏着回不来
   syncTypingState();
+
+  // 任务、截止时间、清单归档状态都可能刚被改过，把交给系统的提醒单子也对一遍
+  syncReminders();
 }
 
 // ---- 打字时收起底部的标签栏和 + 按钮 ----
@@ -732,9 +926,22 @@ function createTasksView() {
   // 标签行右边放一个 ⋯："新建清单"一年也用不了几次，不值得占着右下角那个最显眼的位置
   top.appendChild(createTagBar(listTagSet, {
     key: 'page-lists',
-    items: [{ text: '新建清单', action: openCategoryDraft }]
+    items: [
+      { text: '新建清单', action: openCategoryDraft },
+      // 导出 / 导入放这里：一年用不了几次，但得找得到。
+      // 装成 iOS 应用之后，应用里的数据和 Safari 里的是各存各的，搬家就靠这两项
+      { text: '导出数据', action: startExport },
+      { text: '导入数据', action: startImport }
+    ]
   }));
   enableTagSwipe(body, listTagSet);   // 列表区左右滑切换标签（在 tags.js 里，打卡页也用）
+
+  if (dataNotice) {
+    const notice = document.createElement('div');
+    notice.className = 'data-notice';
+    notice.textContent = dataNotice;
+    body.appendChild(notice);
+  }
 
   const shown = categoriesInFilter(listTagFilter);
   const message = listEmptyMessage(shown);
@@ -2282,7 +2489,9 @@ function checkReminders() {
     const fireAt = new Date(todo.dueAt).getTime() - todo.remindBefore * 60 * 1000;
     if (now < fireAt) return;            // 还没到时候
 
-    const shown = notifier.show('待办提醒', {
+    // 交给系统之后，这条早就排在 iOS 那边、到点它自己弹过了（app 关着也弹），
+    // 这里只把"已经提醒过"记下来，不能再弹一遍，否则一打开应用就是一串重复通知
+    const shown = reminderScheduler !== null || notifier.show('待办提醒', {
       body: `${todo.text}（截止 ${formatDateTime(todo.dueAt)}）`
     });
 
@@ -2297,6 +2506,47 @@ function checkReminders() {
   if (changed) {
     saveTodos();
   }
+}
+
+// ---- 交给系统的提醒单子 ----
+// iOS 一个应用最多只能排 64 条等着弹的通知，多的直接不收。
+// 所以只交最近的 60 条：留点余地，而且人也不会真的指望三个月后那条
+const MAX_SCHEDULED_REMINDERS = 60;
+
+// 还没提醒过、时间还没到的提醒，按时间先后排。
+// 时间已经过了的不交给系统（排一条"过去的闹钟"没有意义），它们由 checkReminders 在打开应用时收尾
+function pendingReminders() {
+  const now = nowFn().getTime();
+
+  return todos
+    .filter((todo) => (
+      todo.dueAt
+      && todo.remindBefore !== null
+      && !todo.reminded
+      && todo.status === 'active'
+      && !isCategoryArchived(todo.category)
+      && new Date(todo.dueAt).getTime() - todo.remindBefore * 60 * 1000 > now
+    ))
+    .map((todo) => ({
+      fireAt: new Date(new Date(todo.dueAt).getTime() - todo.remindBefore * 60 * 1000).toISOString(),
+      title: '待办提醒',
+      body: `${todo.text}（截止 ${formatDateTime(todo.dueAt)}）`
+    }))
+    .sort((a, b) => a.fireAt.localeCompare(b.fireAt))
+    .slice(0, MAX_SCHEDULED_REMINDERS);
+}
+
+// 每次重画完调一次（见 render）。单子和上次一模一样就不交了 ——
+// 重画很频繁（点一下就重画），每次都让系统把通知全撤了重排没必要
+function syncReminders() {
+  if (reminderScheduler === null) return;
+
+  const list = pendingReminders();
+  const text = JSON.stringify(list);
+  if (text === lastRemindersJson) return;
+
+  lastRemindersJson = text;
+  reminderScheduler.replaceAll(list);
 }
 
 let reminderTimer = null;

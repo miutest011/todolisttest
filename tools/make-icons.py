@@ -27,6 +27,14 @@ SIZES = {
     'apple-touch-icon.png': 180,  # iPhone 添加到主屏幕时用这个
 }
 
+# 装成 iOS 应用时的图标（ios/ 那层壳用）。
+# 这里不走 Xcode 的"图标目录"（Assets.xcassets），而是直接把几张 PNG 放进应用里、
+# 在 Info.plist 的 CFBundleIconFiles 里列出来，系统按尺寸自己挑。
+# 原因：图标目录要由 Xcode 的 actool 编译，而 actool 在"只装了 Xcode、没装模拟器运行环境"的机器上
+# 会直接报错（真踩过：本机和 Xcode 里按 ▶️ 都过不去，而那是个 7GB 的下载）。这个老办法不需要它
+IOS_DIR = Path(__file__).resolve().parent.parent / 'ios' / 'TodoList' / 'AppIcons'
+IOS_ICONS = [40, 58, 60, 80, 87, 120, 180]
+
 
 def distance_to_segment(px, py, x1, y1, x2, y2):
     """点到线段的最短距离，用来判断某个像素在不在线条上。"""
@@ -88,12 +96,24 @@ def write_png(path, size, pixels):
     )
 
 
+def write_ios_icons():
+    """给 iOS 外壳写几张图标。文件名里的数字就是像素，系统按尺寸自己挑。"""
+    if not IOS_DIR.parent.parent.exists():
+        return            # 没有 ios/ 目录（只想要网页图标）就跳过
+    IOS_DIR.mkdir(parents=True, exist_ok=True)
+
+    for size in IOS_ICONS:
+        write_png(IOS_DIR / f'Icon-{size}.png', size, draw_icon(size))
+    print(f'ios/TodoList/AppIcons/  （{len(IOS_ICONS)} 张：{", ".join(str(s) for s in IOS_ICONS)}）')
+
+
 def main():
     OUTPUT_DIR.mkdir(exist_ok=True)
     for name, size in SIZES.items():
         path = OUTPUT_DIR / name
         write_png(path, size, draw_icon(size))
         print(f'{path.relative_to(OUTPUT_DIR.parent)}  ({size}x{size}, {path.stat().st_size} 字节)')
+    write_ios_icons()
 
 
 if __name__ == '__main__':

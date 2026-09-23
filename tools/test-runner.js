@@ -63,6 +63,7 @@ function isPageNode(value) {
 function createMemoryStorage() {
   let data = {};
   return {
+    keys: () => Object.keys(data),     // 测"导出名单有没有漏掉哪个键"时要用
     getItem: (key) => (key in data ? data[key] : null),
     setItem: (key, value) => { data[key] = String(value); },
     removeItem: (key) => { delete data[key]; },

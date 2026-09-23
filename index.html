@@ -31,6 +31,8 @@
      新增脚本时记得同时加进 sw.js 的缓存列表（有测试盯着）和 tools/test.html 的 SCRIPTS -->
 <script src="tags.js"></script>
 <script src="logs.js"></script>
+<!-- 装成 iOS 应用时才起作用的一层（提醒交给系统、导出用系统分享）。用浏览器打开时它什么都不做 -->
+<script src="native.js"></script>
 <script>
   // 把整个应用挂到 #app 这个元素上，开始运行
   initApp(document.getElementById('app'));
@@ -46,7 +48,8 @@
   // 注册 Service Worker，让网页能离线打开。
   // 浏览器只在 https 或者 localhost 下才允许注册，所以用 http 的局域网地址访问时
   // 这一步会被跳过 —— 那种情况下网页照常能用，只是装不成 App、也不能离线
-  if ('serviceWorker' in navigator) {
+  // 装成 iOS 应用之后网页是从应用自己的地址加载的，那里没有 Service Worker 这回事
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('sw.js').catch((error) => {
         console.log('Service Worker 没注册成功：', error.message);

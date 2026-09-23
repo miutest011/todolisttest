@@ -1092,6 +1092,220 @@ const MUTATIONS = [
     replace: "    overflow-x: visible;"
   },
 
+  // ---------- 装成应用：提醒交给系统、导出导入 ----------
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '交给系统之后自己又弹一遍（打开应用就是一串重复通知）',
+    file: 'app.js',
+    find: "const shown = reminderScheduler !== null || notifier.show('待办提醒', {",
+    replace: "const shown = notifier.show('待办提醒', {"
+  },
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '过了点的提醒也交给系统（排一个过去的闹钟）',
+    file: 'app.js',
+    find: "      && new Date(todo.dueAt).getTime() - todo.remindBefore * 60 * 1000 > now\n",
+    replace: ""
+  },
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '交给系统的时间没算提前量（说好提前半小时，到点才响）',
+    file: 'app.js',
+    find: "      fireAt: new Date(new Date(todo.dueAt).getTime() - todo.remindBefore * 60 * 1000).toISOString(),",
+    replace: "      fireAt: new Date(new Date(todo.dueAt).getTime()).toISOString(),"
+  },
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '单子不按时间排（超过 60 条时留下的就不是最近的）',
+    file: 'app.js',
+    find: "    .sort((a, b) => a.fireAt.localeCompare(b.fireAt))\n",
+    replace: ""
+  },
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '已经提醒过的又交一遍',
+    file: 'app.js',
+    find: "      && !todo.reminded\n",
+    replace: ""
+  },
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '做完、放弃的任务还在提醒',
+    file: 'app.js',
+    find: "      && todo.status === 'active'\n",
+    replace: ""
+  },
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '归档清单里的任务还在提醒',
+    file: 'app.js',
+    find: "      && !isCategoryArchived(todo.category)\n",
+    replace: ""
+  },
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '不限 60 条（iOS 只收 64 条，多的会被丢掉）',
+    file: 'app.js',
+    find: "    .slice(0, MAX_SCHEDULED_REMINDERS);",
+    replace: ";"
+  },
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '每次重画都让系统把通知全撤了重排',
+    file: 'app.js',
+    find: "  if (text === lastRemindersJson) return;\n",
+    replace: ""
+  },
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '换了一份数据不重新交单子（系统那边早撤空了）',
+    file: 'app.js',
+    find: "  lastRemindersJson = null;  // 换了一份数据，下次重画要重新交一张单子\n",
+    replace: ""
+  },
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '重画完不对提醒单子（改完时间不告诉系统）',
+    file: 'app.js',
+    find: "  syncReminders();\n}",
+    replace: "}"
+  },
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '导出不带附件（图片视频全丢）',
+    file: 'app.js',
+    find: "    files: files.filter((file) => file !== null)",
+    replace: "    files: []"
+  },
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '导出不写版本号',
+    file: 'app.js',
+    find: "    version: EXPORT_VERSION,\n",
+    replace: ""
+  },
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '导出的附件内容没去掉前缀（导回来是坏的）',
+    file: 'app.js',
+    find: "    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');",
+    replace: "    reader.onload = () => resolve(String(reader.result));"
+  },
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '导出名单漏掉打卡项目',
+    file: 'app.js',
+    find: "const EXPORTED_KEYS = ['categories', 'todos', 'expandedCategory', 'listTags', 'categoryMeta', 'logTags', 'logItems'];",
+    replace: "const EXPORTED_KEYS = ['categories', 'todos', 'expandedCategory', 'listTags', 'categoryMeta', 'logTags'];"
+  },
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '导出的文件名不带日期（备份多了分不清）',
+    file: 'app.js',
+    find: "  return `待办清单-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}.json`;",
+    replace: "  return '待办清单.json';"
+  },
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '导入不挡别的应用的文件',
+    file: 'app.js',
+    find: "  if (!parsed || parsed.app !== 'todolist') {",
+    replace: "  if (false) {"
+  },
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '导入不挡更新版本导出的文件',
+    file: 'app.js',
+    find: "  if (parsed.version > EXPORT_VERSION) {",
+    replace: "  if (false) {"
+  },
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '导入时文件里没有的数据不清掉（旧数据留着冒充）',
+    file: 'app.js',
+    find: "    } else {\n      storage.removeItem(key);\n    }",
+    replace: "    }"
+  },
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '导入完不把数据读进内存',
+    file: 'app.js',
+    find: "      reloadFromStorage();\n      render();",
+    replace: "      render();"
+  },
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '导入完不重画（界面还是旧的）',
+    file: 'app.js',
+    find: "      reloadFromStorage();\n      render();",
+    replace: "      reloadFromStorage();"
+  },
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '导入前不问一句就覆盖',
+    file: 'app.js',
+    find: "  if (!confirmFn('导入会用文件里的数据替换掉现在的全部内容（包括打卡记录），确定吗？')) {",
+    replace: "  if (false) {"
+  },
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '用户在选文件时点了取消，还是照样导入',
+    file: 'app.js',
+    find: "      if (text === null || text === undefined) return;   // 用户点了取消\n",
+    replace: ""
+  },
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '菜单里没有导出 / 导入',
+    file: 'app.js',
+    find: "      { text: '导出数据', action: startExport },\n      { text: '导入数据', action: startImport }\n",
+    replace: "\n"
+  },
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '导出 / 导入之后界面上没有任何回音',
+    file: 'app.js',
+    find: "  if (dataNotice) {\n    const notice = document.createElement('div');",
+    replace: "  if (false) {\n    const notice = document.createElement('div');"
+  },
+
+  // ---------- 外壳桥接（native.js）----------
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '在普通浏览器里也去找外壳的信箱（网页版直接坏掉）',
+    file: 'native.js',
+    find: "  if (!bridge) return false;        // 在普通浏览器里打开，照常走网页那一套",
+    replace: "  if (false) return false;"
+  },
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '提醒消息的 type 写错（外壳收到了也不知道要干什么）',
+    file: 'native.js',
+    find: "    replaceAll: (list) => bridge.postMessage({ type: 'reminders', list: list })",
+    replace: "    replaceAll: (list) => bridge.postMessage({ type: 'reminder', list: list })"
+  },
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '提醒单子是空的交过去（外壳把通知全撤了、不再排）',
+    file: 'native.js',
+    find: "    replaceAll: (list) => bridge.postMessage({ type: 'reminders', list: list })",
+    replace: "    replaceAll: (list) => bridge.postMessage({ type: 'reminders', list: [] })"
+  },
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '导出没把文件名带给外壳',
+    file: 'native.js',
+    find: "  useFileSaver((filename, text) => bridge.postMessage({ type: 'export', filename: filename, text: text }));",
+    replace: "  useFileSaver((filename, text) => bridge.postMessage({ type: 'export', filename: '', text: text }));"
+  },
+  {
+    group: '装成应用：提醒交给系统、导出导入',
+    name: '导入用完不摘掉回调（下次选的文件被上次那份接走）',
+    file: 'native.js',
+    find: "      window.nativeFileChosen = null;    // 一次性的，用完就摘掉，免得下次被旧的接走\n",
+    replace: ""
+  },
+
   // ---------- 测试工具自己 ----------
   {
     group: '测试工具',
