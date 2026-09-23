@@ -424,7 +424,7 @@ test('归档的清单：任务不出现在"今天"页，取消归档后回来', 
     ]
   });
 
-  click(tabButton(root, '今天'));
+  click(tabButton(root, '日历'));
   assertEqual(textsOf(root, '.todo-text'), ['交报告'], '归档清单里的任务不来打扰');
 
   unarchiveCategory('旧项目');

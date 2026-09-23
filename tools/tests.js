@@ -1842,7 +1842,7 @@ function tabButton(root, label) {
 test('标签栏：每次启动都回到"清单"页', () => {
   const { root } = setup({ categories: ['工作'] });
 
-  currentTab = 'today';
+  currentTab = 'calendar';
   initApp(root);      // 模拟重新打开应用
 
   assertEqual(currentTab, 'tasks', '启动时应该回到清单页，而不是停在上次的标签');
@@ -1853,18 +1853,18 @@ test('标签栏：默认停在"清单"页', () => {
 
   assertEqual(currentTab, 'tasks', '默认应该是清单页');
   assert(tabButton(root, '清单').classList.contains('active'), '"清单"应该是高亮状态');
-  assert(!tabButton(root, '今天').classList.contains('active'), '"今天"不该是高亮状态');
+  assert(!tabButton(root, '日历').classList.contains('active'), '"今天"不该是高亮状态');
   assert(root.querySelector('#category-list'), '清单页应该显示清单列表');
 });
 
 test('标签栏：点"今天"能切过去，再点"清单"能切回来', () => {
   const { root } = setup({ categories: ['工作'] });
 
-  click(tabButton(root, '今天'));
-  assertEqual(currentTab, 'today', '应该切到今天页');
-  assert(root.querySelector('.today-view'), '应该显示今天页');
+  click(tabButton(root, '日历'));
+  assertEqual(currentTab, 'calendar', '应该切到今天页');
+  assert(root.querySelector('.calendar-view'), '应该显示今天页');
   assertEqual(root.querySelector('#category-list'), null, '不该还显示清单列表');
-  assert(tabButton(root, '今天').classList.contains('active'), '"今天"应该高亮了');
+  assert(tabButton(root, '日历').classList.contains('active'), '"今天"应该高亮了');
 
   click(tabButton(root, '清单'));
   assertEqual(currentTab, 'tasks', '应该切回清单页');
@@ -1888,7 +1888,7 @@ test('标签栏：详情页上不显示标签栏', () => {
 
 // ========== "今天"页 ==========
 
-test('今天：显示今天到期的任务', () => {
+test('日历：默认选中今天，列出今天到期的任务', () => {
   const { root } = setup({
     categories: ['工作'],
     todos: [
@@ -1897,12 +1897,12 @@ test('今天：显示今天到期的任务', () => {
     ]
   });
 
-  click(tabButton(root, '今天'));
+  click(tabButton(root, '日历'));
 
   assertEqual(textsOf(root, '.todo-text'), ['今天要交'], '只该显示今天到期的');
 });
 
-test('今天：过期的任务单独一组，排在前面', () => {
+test('日历：看今天时，过期的任务单独一组排在前面', () => {
   const { root } = setup({
     categories: ['工作'],
     todos: [
@@ -1911,14 +1911,14 @@ test('今天：过期的任务单独一组，排在前面', () => {
     ]
   });
 
-  click(tabButton(root, '今天'));
+  click(tabButton(root, '日历'));
 
   const sections = textsOf(root, '.today-section-title');
   assert(sections[0].includes('已过期'), '过期的应该排在最前面，实际：' + sections);
   assertEqual(textsOf(root, '.todo-text'), ['早该交了', '今天要交'], '顺序不对');
 });
 
-test('今天：汇总所有清单的任务，并标出属于哪个清单', () => {
+test('日历：汇总所有清单的任务，并标出属于哪个清单', () => {
   const { root } = setup({
     categories: ['工作', '生活'],
     todos: [
@@ -1927,14 +1927,14 @@ test('今天：汇总所有清单的任务，并标出属于哪个清单', () =>
     ]
   });
 
-  click(tabButton(root, '今天'));
+  click(tabButton(root, '日历'));
 
   assertEqual(textsOf(root, '.todo-text'), ['交报告', '买菜'], '两个清单的任务都该出现');
   const metas = textsOf(root, '.todo-meta');
   assert(metas[0].includes('工作') && metas[1].includes('生活'), '应该标出所属清单，实际：' + metas);
 });
 
-test('今天：已完成和已放弃的不再出现', () => {
+test('日历：已完成和已放弃的不再出现', () => {
   const { root } = setup({
     categories: ['工作'],
     todos: [
@@ -1944,42 +1944,42 @@ test('今天：已完成和已放弃的不再出现', () => {
     ]
   });
 
-  click(tabButton(root, '今天'));
+  click(tabButton(root, '日历'));
 
   assertEqual(textsOf(root, '.todo-text'), ['还没做'], '今天页只该显示还要做的');
 });
 
-test('今天：明天到期的不算今天', () => {
+test('日历：明天到期的不算在今天名下', () => {
   const { root } = setup({
     categories: ['工作'],
     todos: [{ text: '明天的事', status: 'active', category: '工作', dueAt: isoAfter(60 * 30) }]
   });
 
-  click(tabButton(root, '今天'));
+  click(tabButton(root, '日历'));
 
   assertEqual(textsOf(root, '.todo-text'), [], '30 小时之后到期的不该出现在今天');
-  assert(root.querySelector('.empty-state'), '没有任务时应该有空状态提示');
+  assert(root.querySelector('.day-empty'), '这天没有任务时要说一声，别只剩一个光日历');
 });
 
-test('今天：空状态会提示怎么让任务出现在这里', () => {
+test('日历：一条带截止时间的任务都没有时，提示怎么让任务出现在这里', () => {
   const { root } = setup({
     categories: ['工作'],
     todos: [{ text: '没设时间', status: 'active', category: '工作' }]
   });
 
-  click(tabButton(root, '今天'));
+  click(tabButton(root, '日历'));
 
-  const empty = root.querySelector('.empty-state');
-  assert(empty, '应该有空状态');
+  const empty = root.querySelector('.day-empty');
+  assert(empty, '应该有提示');
   assert(empty.textContent.includes('截止时间'), '光说"没有任务"没用，要告诉用户怎么办');
 });
 
-test('今天：点任务能进详情页', () => {
+test('日历：点任务能进详情页', () => {
   const { root } = setup({
     categories: ['工作'],
     todos: [{ text: '交报告', status: 'active', category: '工作', dueAt: isoAfter(60) }]
   });
-  click(tabButton(root, '今天'));
+  click(tabButton(root, '日历'));
 
   click(root.querySelector('.todo-item'));
 
@@ -1987,12 +1987,12 @@ test('今天：点任务能进详情页', () => {
   assertEqual(root.querySelector('.detail-title').textContent, '交报告', '进的应该是这条任务的详情');
 });
 
-test('今天：在今天页勾选完成，任务会从这一页消失', () => {
+test('日历：勾选完成后，任务从这一页消失', () => {
   const { root } = setup({
     categories: ['工作'],
     todos: [{ text: '交报告', status: 'active', category: '工作', dueAt: isoAfter(60) }]
   });
-  click(tabButton(root, '今天'));
+  click(tabButton(root, '日历'));
 
   click(root.querySelector('.checkbox'));
 
@@ -2000,7 +2000,7 @@ test('今天：在今天页勾选完成，任务会从这一页消失', () => {
   assertEqual(textsOf(root, '.todo-text'), [], '做完了就不该再占着今天这一页');
 });
 
-test('今天：这一页的任务不能拖动排序', () => {
+test('日历：这一页的任务不能拖动排序', () => {
   const { root } = setup({
     categories: ['工作'],
     todos: [
@@ -2008,7 +2008,7 @@ test('今天：这一页的任务不能拖动排序', () => {
       { text: 'B', status: 'active', category: '工作', dueAt: isoAfter(120) }
     ]
   });
-  click(tabButton(root, '今天'));
+  click(tabButton(root, '日历'));
 
   const items = [...root.querySelectorAll('.todo-item')];
   const startY = items[0].getBoundingClientRect().top;
@@ -2135,7 +2135,7 @@ test('自检：跑测试不会碰到浏览器里的真实数据', () => {
 
 // ========== 详情页：清单标签 + 闹钟 ==========
 
-test('今天页：任务不带置顶按钮（说不清是在这一页置顶还是在原清单置顶）；清单页里照样有', () => {
+test('日历页：任务不带置顶按钮（说不清是在这一页置顶还是在原清单置顶）；清单页里照样有', () => {
   const { root } = setup({
     categories: ['工作'],
     todos: [{ text: '交报告', status: 'active', category: '工作', dueAt: isoAfter(60) }],
@@ -2144,7 +2144,7 @@ test('今天页：任务不带置顶按钮（说不清是在这一页置顶还�
 
   assert(itemNamed(root, '交报告').querySelector('.pin-btn'), '清单页里有置顶按钮');
 
-  click(tabButton(root, '今天'));
+  click(tabButton(root, '日历'));
   assert(itemNamed(root, '交报告'), '今天页里有这条任务');
   assertEqual(itemNamed(root, '交报告').querySelector('.pin-btn'), null, '今天页里没有置顶按钮');
   assert(itemNamed(root, '交报告').querySelector('.menu-btn'), '⋯ 菜单还在');

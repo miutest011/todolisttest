@@ -9,6 +9,7 @@ index.html   只有骨架：几个 <script> 加一句 initApp()。逻辑一行�
 style.css    全部样式，开头是 :root 设计变量
 app.js       待办清单：清单 / 今天 / 详情页 / 提醒 / 附件 / 拖拽 / 通用组件
 tags.js      标签界面（顶部标签行、长按管理、点选），清单页和打卡页共用
+calendar.js  日历页（月 / 周 / 日）和共用的月历格子（createMonthGrid），打卡详情页也用它
 logs.js      打卡：独立的一块数据和界面，借用 app.js 和 tags.js 的通用组件
 sw.js        离线缓存
 tools/       测试工具（自成一套，见 tools/README.md）

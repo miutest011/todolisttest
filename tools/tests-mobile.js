@@ -51,7 +51,7 @@ test('新建按钮："今天"页和详情页上没有', () => {
   const { root } = setup({ categories: ['工作'], logItems: [logItem('喝水')] });
   addTodo('工作', '写周报');
 
-  click(tabButton(root, '今天'));
+  click(tabButton(root, '日历'));
   assertEqual(root.querySelector('.fab'), null, '今天页新建任务要选清单、设日期，是另一个功能');
 
   openTasksTab(root);
@@ -708,27 +708,29 @@ test('页面骨架：手机那么宽时顶部只留 24px，电脑上才留 60px'
   assertEqual(desktop.paddingTop, '60px', '电脑上和 body 的上边距一样');
 });
 
-test('页面骨架：今天页的标题和日期固定在上面，任务在下面滚', () => {
+test('页面骨架：日历页的月历和视图切换固定在上面，任务在下面滚', () => {
   const { root } = setup({
     categories: ['工作'],
     todos: [{ text: '交报告', status: 'active', category: '工作', dueAt: isoAfter(60) }],
     expandedCategory: '工作'
   });
-  click(tabButton(root, '今天'));
+  click(tabButton(root, '日历'));
 
   const top = root.querySelector('.page-top');
   const scroller = root.querySelector('.page-scroll');
-  assertEqual(top.querySelector('h1').textContent, '今天', '标题在上面');
-  assert(top.querySelector('.view-subtitle'), '日期在上面');
+  assert(top.querySelector('.view-switch'), '月 / 周 / 日 在上面');
+  assert(top.querySelector('.calendar-grid'), '月历在上面');
   assert(scroller.querySelector('.today-section'), '任务分组在下面滚');
   assertEqual(top.querySelector('.today-section'), null, '任务不能跑到固定的那块里');
+  assertEqual(scroller.querySelector('.calendar-grid'), null, '月历也不能跟着列表滚走');
 });
 
-test('页面骨架：今天页没有任务时，提示也在下面那块', () => {
+test('页面骨架：日历页那天没有任务时，提示也在下面那块', () => {
   const { root } = setup({ categories: ['工作'] });
-  click(tabButton(root, '今天'));
+  click(tabButton(root, '日历'));
 
-  assert(root.querySelector('.page-scroll .empty-state'), '空状态提示在滚动区里');
+  assert(root.querySelector('.page-scroll .day-empty'), '提示在滚动区里');
+  assert(root.querySelector('.page-top .calendar-grid'), '就算没任务，上面也还有个日历撑着（这正是改成日历的原因）');
 });
 
 // 用户截图发现：点 + 打开新建面板、再关掉之后，最上面的状态栏（时间、电量那一条）变成了灰色。
@@ -755,7 +757,7 @@ test('状态栏：固定在屏幕上的页面有白色底，而不是透明的',
   };
 
   check('清单页');
-  click(tabButton(root, '今天'));
+  click(tabButton(root, '日历'));
   check('今天页');
   openLogsTab(root);
   check('打卡页');

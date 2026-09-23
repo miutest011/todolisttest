@@ -30,6 +30,8 @@
      打卡功能单独放在 logs.js 里。它们要用前面文件里的工具，所以顺序不能乱。
      新增脚本时记得同时加进 sw.js 的缓存列表（有测试盯着）和 tools/test.html 的 SCRIPTS -->
 <script src="tags.js"></script>
+<!-- 日历页，以及打卡详情页也在用的那个月历 -->
+<script src="calendar.js"></script>
 <script src="logs.js"></script>
 <!-- 装成 iOS 应用时才起作用的一层（提醒交给系统、导出用系统分享）。用浏览器打开时它什么都不做 -->
 <script src="native.js"></script>

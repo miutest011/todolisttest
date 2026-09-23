@@ -367,12 +367,12 @@ test('左右滑：正在打字、按在输入框里、菜单开着、用鼠标�
   assertEqual(listTagFilter, 'all', '鼠标不算');
 });
 
-test('左右滑：今天页没有标签，滑了什么都不发生', () => {
+test('左右滑：日历页没有标签，滑了什么都不发生', () => {
   const { root } = listTagSetup();
-  click(tabButton(root, '今天'));
+  click(tabButton(root, '日历'));
 
   fingerSwipe(scrollerOf(root), -(SWIPE_DISTANCE + 10), 0);
-  assertEqual([currentTab, listTagFilter, logTagFilter], ['today', 'all', 'all'], '还在今天页，两边的筛选都没动');
+  assertEqual([currentTab, listTagFilter, logTagFilter], ['calendar', 'all', 'all'], '还在日历页，两边的筛选都没动');
 });
 
 test('左右滑：标签多到一行放不下时，换到的标签会挪进看得见的地方', async () => {

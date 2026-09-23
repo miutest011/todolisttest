@@ -124,7 +124,7 @@ let detailIndex = null;     // 正在看哪条任务的详情页（null = 看列
 let editingDueFor = null;   // 正在给哪条任务设置截止时间
 let attachmentError = null; // 附件保存失败时的提示文字
 let expandedGroups = [];    // 哪些"已完成/已放弃"分组是展开的，只记在内存里
-let currentTab = 'tasks';   // 底部标签栏当前在哪一页：tasks（清单）/ today（今天）/ logs（打卡）
+let currentTab = 'tasks';   // 底部标签栏当前在哪一页：tasks（清单）/ calendar（日历）/ logs（打卡）
 let suppressNextClick = false;  // 拖动结束后紧跟着的那一次点击要忽略掉
 let listTagFilter = 'all';  // 清单页顶部选中了哪个：'all'（所有）/ 'archived'（已归档）/ 某个标签的 id
 let lastRemindersJson = null;   // 上次交给系统的提醒单子，没变就不再打扰它（重画很频繁）
@@ -147,6 +147,7 @@ function resetViewState() {
   lastRemindersJson = null;  // 换了一份数据，下次重画要重新交一张单子
   dataNotice = null;
   resetTagViewState();       // 标签输入框、长按管理条（在 tags.js 里，两页共用）
+  resetCalendarViewState();  // 日历页看的是哪一天（在 calendar.js 里）
   resetLogViewState();       // 打卡模块自己的界面状态（在 logs.js 里）
 }
 
@@ -167,6 +168,7 @@ function reloadFromStorage() {
   categoryMeta = loadCategoryMeta();
   logTags = loadLogTags();     // 同理，打卡也是先读标签再读项目
   logItems = loadLogItems();
+  calendarView = loadCalendarView();   // 日历页上次看的是月 / 周 / 日（在 calendar.js 里）
 }
 
 // 点"导出数据"：把内容算出来，交给浏览器下载（装成应用之后是系统的分享）
@@ -220,7 +222,7 @@ function errorText(error) {
 const EXPORT_VERSION = 1;
 
 // 要带走的存储键。加了新的存储键，记得加进来 —— 有测试盯着这件事
-const EXPORTED_KEYS = ['categories', 'todos', 'expandedCategory', 'listTags', 'categoryMeta', 'logTags', 'logItems'];
+const EXPORTED_KEYS = ['categories', 'todos', 'expandedCategory', 'listTags', 'categoryMeta', 'logTags', 'logItems', 'calendarView'];
 
 // 导出的文件存到哪：网页版交给浏览器下载
 function downloadFile(filename, text) {
@@ -498,7 +500,7 @@ function render() {
   } else if (logDetailId !== null) {
     appEl.appendChild(createLogDetailPage(logDetailId));
   } else {
-    const views = { tasks: createTasksView, today: createTodayView, logs: createLogsView };
+    const views = { tasks: createTasksView, calendar: createCalendarView, logs: createLogsView };
     appEl.appendChild((views[currentTab] || createTasksView)());
     appEl.appendChild(createTabBar());
   }
@@ -880,7 +882,7 @@ function commitCategoryDrag() {
 // ---- 底部标签栏 ----
 const TABS = [
   { key: 'tasks', label: '清单', icon: 'list' },
-  { key: 'today', label: '今天', icon: 'calendar' },
+  { key: 'calendar', label: '日历', icon: 'calendar' },
   { key: 'logs', label: '打卡', icon: 'checkCircle' }
 ];
 
@@ -1228,85 +1230,6 @@ function cancelTaskDraft() {
 function startOfToday() {
   const now = nowFn();
   return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-}
-
-function createTodayView() {
-  // 标题和日期固定在上面，下面的任务自己滚（骨架见 createScrollingPage）
-  const { page: view, top, body } = createScrollingPage('today-view');
-
-  const dayStart = startOfToday();
-  const dayEnd = dayStart + 24 * 60 * 60 * 1000;   // 明天零点
-
-  const overdue = [];
-  const today = [];
-
-  todos.forEach((todo, index) => {
-    if (todo.status !== 'active') return;   // 做完的和放弃的不用再操心
-    if (!todo.dueAt) return;                // 没设截止时间的不算"今天要做"
-    if (isCategoryArchived(todo.category)) return;   // 归档了的清单暂时不用，别来打扰
-
-    const due = new Date(todo.dueAt).getTime();
-    if (due < dayStart) {
-      overdue.push({ todo: todo, index: index });
-    } else if (due < dayEnd) {
-      today.push({ todo: todo, index: index });
-    }
-  });
-
-  // "今天"页保留标题：它说明的是"你正在看哪一页"，不是 App 名字
-  const title = document.createElement('h1');
-  title.textContent = '今天';
-  top.appendChild(title);
-
-  const date = document.createElement('div');
-  date.className = 'view-subtitle';
-  date.textContent = formatDate(nowFn());
-  top.appendChild(date);
-
-  if (overdue.length === 0 && today.length === 0) {
-    const empty = document.createElement('div');
-    empty.className = 'empty-state';
-    empty.textContent = '今天没有到期的任务。给任务设置截止时间后，它们会出现在这里。';
-    body.appendChild(empty);
-    return view;
-  }
-
-  if (overdue.length > 0) {
-    body.appendChild(createTodaySection('已过期', overdue, 'overdue'));
-  }
-  if (today.length > 0) {
-    body.appendChild(createTodaySection('今天到期', today, ''));
-  }
-
-  return view;
-}
-
-function createTodaySection(label, items, extraClass) {
-  const box = document.createElement('section');
-  box.className = 'today-section';
-
-  const header = document.createElement('div');
-  header.className = extraClass ? 'today-section-title ' + extraClass : 'today-section-title';
-  header.textContent = `${label} ${items.length}`;
-  box.appendChild(header);
-
-  const list = document.createElement('ul');
-  items.forEach((item) => {
-    // 这一页的任务来自不同清单，所以关掉拖拽（这里没有"顺序"可言），
-    // 并且额外标出它属于哪个清单
-    // 这一页混着不同清单的任务：没有"顺序"可言，不能拖；置顶也说不清是在这一页置顶还是在原清单里置顶，不放
-    const li = createTodoItem(item.todo, item.index, { draggable: false, pinnable: false });
-
-    const meta = document.createElement('span');
-    meta.className = 'todo-meta';
-    meta.textContent = item.todo.category + ' · ' + formatDateTime(item.todo.dueAt).slice(11);
-    li.insertBefore(meta, li.querySelector('.pin-btn') || li.querySelector('.menu-anchor'));
-
-    list.appendChild(li);
-  });
-  box.appendChild(list);
-
-  return box;
 }
 
 function formatDate(date) {

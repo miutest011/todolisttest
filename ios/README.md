@@ -133,6 +133,7 @@ xcrun simctl get_app_container booted com.你的名字.todolist data
 - [ ] **导入**：⋯ → 导入数据 → 选到刚才那个文件，数据进来
 - [ ] **附件**：加一张图片，重开应用还看得见
 - [ ] 手势（右滑返回、左右滑切标签）、弹键盘时底部不乱跳，和网页版一样
+- [ ] 日历页的月 / 周 / 日切换、翻月份，点某天能看到那天的任务
 
 哪条不对就说具体现象。最可能出问题的是第一条：网页数据存在哪、系统认不认，不同 iOS 版本不完全一样
 （壳里用自定义地址 `todolist://` 而不是 `file://` 就是为了这个）。
@@ -144,6 +145,6 @@ xcrun simctl get_app_container booted com.你的名字.todolist data
 1. Xcode → File → New → Project → iOS → **App**；Product Name 填 `TodoList`，Interface 选 **SwiftUI**，Language 选 **Swift**
 2. 把 Xcode 生成的 `ContentView.swift` 内容换成 `ios/TodoList/ContentView.swift` 的内容（生成的 `TodoListApp.swift` 保留，不用管这里的那份）
 3. 把 `WebAppViewController.swift`、`WebFilesSchemeHandler.swift`、`ReminderCenter.swift` 拖进 Xcode（勾 Copy items if needed 和 Add to targets）
-4. 把六个网页文件拖进去：`index.html`、`style.css`、`app.js`、`tags.js`、`logs.js`、`native.js`
+4. 把七个网页文件拖进去：`index.html`、`style.css`、`app.js`、`tags.js`、`calendar.js`、`logs.js`、`native.js`
    （**不要勾 Copy items if needed**，这样以后改网页代码不用再拖一次；要勾 Add to targets）
 5. 之后照着上面第 3 步往下做

@@ -212,13 +212,6 @@ const MUTATIONS = [
   },
   {
     group: '清单标签',
-    name: '"今天"页不排除归档清单的任务',
-    file: 'app.js',
-    find: '    if (isCategoryArchived(todo.category)) return;   // 归档了的清单暂时不用，别来打扰\n',
-    replace: ''
-  },
-  {
-    group: '清单标签',
     name: '归档清单的任务照样提醒',
     file: 'app.js',
     find: '    if (isCategoryArchived(todo.category)) return;   // 清单归档了也不提醒。取消归档后还没过点的照常提醒\n',
@@ -533,8 +526,8 @@ const MUTATIONS = [
     group: '清单页：展开、新建任务、打字',
     name: '标签行右边的 ⋯ 里没有"新建清单"',
     file: 'app.js',
-    find: "    items: [{ text: '新建清单', action: openCategoryDraft }]",
-    replace: "    items: []"
+    find: "      { text: '新建清单', action: openCategoryDraft },",
+    replace: "      { text: '', action: openCategoryDraft },"
   },
   {
     group: '清单页：展开、新建任务、打字',
@@ -591,7 +584,7 @@ const MUTATIONS = [
     group: '清单页：展开、新建任务、打字',
     name: '按回车加完任务就收起（不能连续添加了）',
     file: 'app.js',
-    find: "    taskDraft = { text: '', category: draft.category };   // 还放进同一个清单",
+    find: "    taskDraft = newTaskDraft(draft.category);",
     replace: "    taskDraft = null;"
   },
   {
@@ -670,13 +663,6 @@ const MUTATIONS = [
 
   {
     group: '清单页、打卡页：上面固定、下面自己滚',
-    name: '今天页的标题放进了会滚的那块',
-    file: 'app.js',
-    find: "  title.textContent = '今天';\n  top.appendChild(title);",
-    replace: "  title.textContent = '今天';\n  body.appendChild(title);"
-  },
-  {
-    group: '清单页、打卡页：上面固定、下面自己滚',
     name: '新建面板的遮罩又盖到了状态栏（关掉后顶上留一条灰）',
     file: 'style.css',
     find: "    top: env(safe-area-inset-top);\n    right: 0;",
@@ -691,13 +677,6 @@ const MUTATIONS = [
   },
 
   // ---------- 详情页：清单标签 + 闹钟；今天页不放置顶 ----------
-  {
-    group: '详情页：清单标签 + 闹钟；今天页不放置顶',
-    name: '今天页的任务又带上了置顶按钮',
-    file: 'app.js',
-    find: "{ draggable: false, pinnable: false }",
-    replace: "{ draggable: false }"
-  },
   {
     group: '详情页：清单标签 + 闹钟；今天页不放置顶',
     name: '详情页卡片里又出现了置顶按钮',
@@ -1195,8 +1174,8 @@ const MUTATIONS = [
     group: '装成应用：提醒交给系统、导出导入',
     name: '导出名单漏掉打卡项目',
     file: 'app.js',
-    find: "const EXPORTED_KEYS = ['categories', 'todos', 'expandedCategory', 'listTags', 'categoryMeta', 'logTags', 'logItems'];",
-    replace: "const EXPORTED_KEYS = ['categories', 'todos', 'expandedCategory', 'listTags', 'categoryMeta', 'logTags'];"
+    find: "const EXPORTED_KEYS = ['categories', 'todos', 'expandedCategory', 'listTags', 'categoryMeta', 'logTags', 'logItems', 'calendarView'];",
+    replace: "const EXPORTED_KEYS = ['categories', 'todos', 'expandedCategory', 'listTags', 'categoryMeta', 'logTags', 'calendarView'];"
   },
   {
     group: '装成应用：提醒交给系统、导出导入',
@@ -1304,6 +1283,197 @@ const MUTATIONS = [
     file: 'native.js',
     find: "      window.nativeFileChosen = null;    // 一次性的，用完就摘掉，免得下次被旧的接走\n",
     replace: ""
+  },
+
+  // ---------- 日历页：月 / 周 / 日 ----------
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '有任务的日子不标小圆点（又变回一片空白）',
+    file: 'calendar.js',
+    find: "      if (marked[key]) cell.appendChild(createTaskDot());\n",
+    replace: ""
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '做完、放弃的任务也算在日历上',
+    file: 'calendar.js',
+    find: "      todo.status === 'active' && todo.dueAt && !isCategoryArchived(todo.category)",
+    replace: "      todo.dueAt && !isCategoryArchived(todo.category)"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '归档清单里的任务也算在日历上',
+    file: 'calendar.js',
+    find: "      todo.status === 'active' && todo.dueAt && !isCategoryArchived(todo.category)",
+    replace: "      todo.status === 'active' && todo.dueAt"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '一天之内不按时间先后排',
+    file: 'calendar.js',
+    find: "    .sort((a, b) => a.todo.dueAt.localeCompare(b.todo.dueAt));   // 一天之内按几点排\n",
+    replace: "\n"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '点某一天不换（下面列的还是原来那天）',
+    file: 'calendar.js',
+    find: "    onPick: (key) => {\n      if (closeMenuIfOpen()) return;\n      calendarDay = key;\n      render();\n    },",
+    replace: "    onPick: (key) => {\n      if (closeMenuIfOpen()) return;\n      render();\n    },"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '看哪天都把过期任务列出来',
+    file: 'calendar.js',
+    find: "  const overdue = calendarDay === todayKey ? overdueTasks() : [];",
+    replace: "  const overdue = overdueTasks();"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '过期的任务一条都不列（翻不到就忘了）',
+    file: 'calendar.js',
+    find: "  const overdue = calendarDay === todayKey ? overdueTasks() : [];",
+    replace: "  const overdue = [];"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '翻月份时选中的日子不跟着走',
+    file: 'calendar.js',
+    find: "      calendarDay = month === monthKey(todayKey) ? todayKey : `${month}-01`;\n",
+    replace: ""
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '翻回本月时不回到今天',
+    file: 'calendar.js',
+    find: "      calendarDay = month === monthKey(todayKey) ? todayKey : `${month}-01`;",
+    replace: "      calendarDay = `${month}-01`;"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '周视图翻页只翻一天',
+    file: 'calendar.js',
+    find: "    calendarDay = shiftDays(calendarDay, 7);",
+    replace: "    calendarDay = shiftDays(calendarDay, 1);"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '周视图不是周一开头',
+    file: 'calendar.js',
+    find: "  return (new Date(year, month - 1, day).getDay() + 6) % 7;",
+    replace: "  return new Date(year, month - 1, day).getDay();"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '日视图翻页一下翻一周',
+    file: 'calendar.js',
+    find: "    calendarDay = shiftDays(calendarDay, 1);\n    render();\n  }));\n\n  return box;\n}\n\nfunction createTaskDot()",
+    replace: "    calendarDay = shiftDays(calendarDay, 7);\n    render();\n  }));\n\n  return box;\n}\n\nfunction createTaskDot()"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '换了视图不存起来（下次打开又变回月视图）',
+    file: 'calendar.js',
+    find: "      saveCalendarView();     // 记住，下次打开还是这个\n",
+    replace: ""
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '存了不认识的视图名字时不退回月视图',
+    file: 'calendar.js',
+    find: "  return CALENDAR_VIEWS.some((view) => view.key === value) ? value : 'month';",
+    replace: "  return value;"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '重开应用后还停在上次看的那天，不回到今天',
+    file: 'calendar.js',
+    find: "  calendarDay = null;         // 下次画的时候会补成今天",
+    replace: "  // calendarDay 不重置"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '日期字符串又丢回 new Date（时区一偏就差一天）',
+    file: 'calendar.js',
+    find: "  if (isDateKey(value)) return value;\n",
+    replace: ""
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '月历不标今天',
+    file: 'calendar.js',
+    find: "    if (key === todayKey) cell.classList.add('today');\n    if (key === selected) cell.classList.add('selected');",
+    replace: "    if (key === selected) cell.classList.add('selected');"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '月历不高亮选中的那天',
+    file: 'calendar.js',
+    find: "    if (key === todayKey) cell.classList.add('today');\n    if (key === selected) cell.classList.add('selected');",
+    replace: "    if (key === todayKey) cell.classList.add('today');"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '周视图不高亮选中的那天',
+    file: 'calendar.js',
+    find: "    if (key === calendarDay) cell.classList.add('selected');\n",
+    replace: ""
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '视图切换按钮不显示当前选的是哪个',
+    file: 'calendar.js',
+    find: "    btn.className = key === calendarView ? 'view-switch-btn active' : 'view-switch-btn';",
+    replace: "    btn.className = 'view-switch-btn';"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '日历页的任务又能拖动排序了',
+    file: 'calendar.js',
+    find: "    const li = createTodoItem(todo, index, { draggable: false, pinnable: false });",
+    replace: "    const li = createTodoItem(todo, index, { draggable: true, pinnable: false });"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '日历页的任务又带上了置顶按钮',
+    file: 'calendar.js',
+    find: "    const li = createTodoItem(todo, index, { draggable: false, pinnable: false });",
+    replace: "    const li = createTodoItem(todo, index, { draggable: false, pinnable: true });"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '这天没有任务时什么都不说',
+    file: 'calendar.js',
+    find: "    body.appendChild(empty);\n  }\n\n  return view;\n}",
+    replace: "  }\n\n  return view;\n}"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '一条带截止时间的任务都没有时，不告诉用户该怎么办',
+    file: 'calendar.js',
+    find: "    if (plannedTasks().length === 0) {\n      empty.textContent = '还没有设了截止时间的任务。给任务设置截止时间后，它们会出现在这里。';\n    } else {",
+    replace: "    if (false) {\n      empty.textContent = '';\n    } else {"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '日历页的任务不标出属于哪个清单、几点到期',
+    file: 'calendar.js',
+    find: "    li.insertBefore(meta, li.querySelector('.pin-btn') || li.querySelector('.menu-anchor'));\n",
+    replace: ""
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '日历跟着任务列表一起滚走了（顶部就该固定）',
+    file: 'calendar.js',
+    find: "  top.appendChild(createViewSwitch());\n  top.appendChild(createCalendarBlock());",
+    replace: "  body.appendChild(createViewSwitch());\n  body.appendChild(createCalendarBlock());"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '视图选择不跟着导出走（换手机就丢）',
+    file: 'app.js',
+    find: "const EXPORTED_KEYS = ['categories', 'todos', 'expandedCategory', 'listTags', 'categoryMeta', 'logTags', 'logItems', 'calendarView'];",
+    replace: "const EXPORTED_KEYS = ['categories', 'todos', 'expandedCategory', 'listTags', 'categoryMeta', 'logTags', 'logItems'];"
   },
 
   // ---------- 测试工具自己 ----------

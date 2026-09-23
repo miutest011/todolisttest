@@ -23,6 +23,11 @@ function logRow(root, name) {
     .find((li) => li.querySelector('.log-name').textContent === name);
 }
 
+// 月历上的"上个月 / 下个月"。按名字找，和用户看到的一致
+function calendarNav(root, label) {
+  return [...root.querySelectorAll('.calendar-nav')].find((btn) => btn.title === label);
+}
+
 function calendarCell(root, day) {
   return [...root.querySelectorAll('.calendar-cell')].find((cell) => {
     const dayEl = cell.querySelector('.calendar-day');
@@ -168,7 +173,7 @@ test('打卡：月历周一开头，1 号对得上星期几', () => {
   setup();
 
   // 2026 年 9 月 1 日是周二：前面空一格（周一那格），一共 30 天
-  const cells = logMonthCells('2026-09');
+  const cells = monthCells('2026-09');
 
   assertEqual(cells.slice(0, 2), [null, 1], '1 号应该落在周二那一格');
   assertEqual(cells.filter((day) => day !== null).length, 30, '9 月有 30 天');
@@ -178,15 +183,15 @@ test('打卡：月历周一开头，1 号对得上星期几', () => {
 test('打卡：闰年二月有 29 天', () => {
   setup();
 
-  assertEqual(logMonthCells('2028-02').filter((day) => day !== null).length, 29, '2028 年是闰年');
-  assertEqual(logMonthCells('2027-02').filter((day) => day !== null).length, 28, '2027 年不是闰年');
+  assertEqual(monthCells('2028-02').filter((day) => day !== null).length, 29, '2028 年是闰年');
+  assertEqual(monthCells('2027-02').filter((day) => day !== null).length, 28, '2027 年不是闰年');
 });
 
 test('打卡：翻月份会自动跨年', () => {
   setup();
 
-  assertEqual(shiftLogMonth('2026-12', 1), '2027-01', '12 月往后是明年 1 月');
-  assertEqual(shiftLogMonth('2026-01', -1), '2025-12', '1 月往前是去年 12 月');
+  assertEqual(shiftMonth('2026-12', 1), '2027-01', '12 月往后是明年 1 月');
+  assertEqual(shiftMonth('2026-01', -1), '2025-12', '1 月往前是去年 12 月');
 });
 
 test('打卡：删某一条记录只删那一条', () => {
@@ -405,7 +410,7 @@ test('打卡详情：月历能翻到上个月，选中那天就看到当时的�
 
   assertEqual(calendarCell(root, 20).querySelector('.hand-circle'), null, '9 月 20 号没打卡');
 
-  click(root.querySelector('.calendar-nav[data-offset="-1"]'));
+  click(calendarNav(root, '上个月'));
 
   assertEqual(root.querySelector('.calendar-title').textContent, '2026-08', '应该翻到 8 月');
   assert(calendarCell(root, 20).querySelector('.hand-circle'), '8 月 20 号应该被圈出来');
@@ -595,7 +600,7 @@ test('补录：填个时间就补上一次，落在选中那天（深夜也不�
   click(root.querySelector('.backfill-confirm'));
 
   assertEqual(logItems[0].entries.length, 1, '应该补上一条');
-  assertEqual(logDateKey(logItems[0].entries[0]), pastDayKey(), '这条要算在选中那天，而不是第二天');
+  assertEqual(dateKey(logItems[0].entries[0]), pastDayKey(), '这条要算在选中那天，而不是第二天');
   assertEqual(stored(storage, 'logItems')[0].entries.length, 1, '要保存下来');
 });
 

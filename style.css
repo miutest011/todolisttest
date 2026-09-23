@@ -192,6 +192,118 @@
     text-align: center;
   }
 
+  /* ---- 日历页 ---- */
+  /* 右上角的 月 / 周 / 日。靠右放：它是"换个看法"，不是这一页的主角 */
+  .view-switch {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-1);
+    margin-bottom: var(--space-3);
+  }
+
+  .view-switch-btn {
+    min-width: 40px;
+    padding: var(--space-1) var(--space-3);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+    font-size: var(--text-sm);
+    color: var(--text-subtle);
+  }
+
+  .view-switch-btn.active {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: #fff;
+  }
+
+  /* 有任务的日子：数字下面一个小圆点。格子里放得下，又不抢数字的位置 */
+  .task-dot {
+    position: absolute;
+    bottom: 4px;
+    left: 50%;
+    width: 5px;
+    height: 5px;
+    margin-left: -2.5px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+
+  /* 月视图里选中的那天是个主色实心圆，小圆点贴在圆下缘会拖出一个水滴形状，很难看。
+     索性不画：这一天的任务就列在日历正下方，那个点已经没有信息量了。
+     （周视图的选中是淡蓝底，点照常画得清楚，不用管） */
+  .calendar-cell.selected .task-dot {
+    display: none;
+  }
+
+  /* 周视图：一行七天，左右各一个翻页箭头 */
+  .week-strip {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-bottom: var(--space-4);
+  }
+
+  .week-days {
+    flex: 1;
+    display: flex;
+    gap: var(--space-1);
+  }
+
+  .week-day {
+    position: relative;      /* 小圆点是绝对定位的，要有个参照 */
+    flex: 1;
+    padding: var(--space-2) 0 var(--space-4);
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    background: none;
+    line-height: 1.4;
+  }
+
+  .week-day-name {
+    display: block;
+    font-size: var(--text-xs);
+    color: var(--text-subtle);
+  }
+
+  .week-day-number {
+    display: block;
+    font-size: var(--text-base);
+    color: var(--text-body);
+  }
+
+  .week-day.today .week-day-number {
+    font-weight: 600;
+    color: var(--accent);
+  }
+
+  .week-day.selected {
+    border-color: var(--accent);
+    background: #eaf2fb;
+  }
+
+  /* 日视图：只有一行标题加左右箭头 */
+  .day-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-4);
+  }
+
+  .day-title {
+    font-size: var(--text-md);
+    font-weight: 600;
+    color: var(--text-body);
+  }
+
+  /* 这一天没有任务时的那行小字。比 .empty-state 轻，因为上面还有个日历撑着 */
+  .day-empty {
+    padding: var(--space-4) var(--space-1);
+    font-size: var(--text-sm);
+    color: var(--text-faint);
+    text-align: center;
+  }
+
   .today-section {
     margin-bottom: var(--space-6);
   }
@@ -386,7 +498,7 @@
   }
 
   .calendar-cell {
-    position: relative;
+    position: relative;                /* 打卡的手写圈、有任务的小圆点都是绝对定位的 */
     display: flex;
     align-items: center;
     justify-content: center;

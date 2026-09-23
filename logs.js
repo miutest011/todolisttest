@@ -6,7 +6,6 @@
 // 标签界面用的是 tags.js 里的共用组件，所以页面里必须排在 app.js 和 tags.js 后面加载。
 
 const LOG_DAY_MS = 24 * 60 * 60 * 1000;
-const LOG_WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];   // 月历周一开头
 
 // ---- 数据 ----
 // 每个打卡项目长这样：
@@ -103,39 +102,8 @@ function cleanLogTagIds(tagIds) {
 }
 
 // ---- 日期工具 ----
-// 把一个时间换成"本地日期"，形如 '2026-09-10'。
-//
-// 千万别偷懒直接取 ISO 字符串的前 10 位：那是 UTC 的日期，不是你手机上的日期。
-// 比如在比 UTC 慢 7 小时的时区，晚上 8 点打的卡存成 ISO 是第二天凌晨 3 点，
-// 取前 10 位就会被算到第二天去
-function logDateKey(value) {
-  const date = new Date(value);
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
-
-function logMonthKey(value) {
-  return logDateKey(value).slice(0, 7);
-}
-
-// 在 '2026-09' 这样的月份上加减几个月，会自动跨年
-function shiftLogMonth(monthKey, offset) {
-  const [year, month] = monthKey.split('-').map(Number);
-  return logMonthKey(new Date(year, month - 1 + offset, 1));
-}
-
-// 月历的格子：前面补几个空格，让 1 号对上星期几（周一开头），然后是 1 号到月底
-function logMonthCells(monthKey) {
-  const [year, month] = monthKey.split('-').map(Number);
-  const firstWeekday = new Date(year, month - 1, 1).getDay();   // 周日=0 … 周六=6
-  const leadingBlanks = (firstWeekday + 6) % 7;                 // 换算成 周一=0 … 周日=6
-  const daysInMonth = new Date(year, month, 0).getDate();       // "下个月的第 0 天"就是这个月最后一天
-
-  const cells = [];
-  for (let i = 0; i < leadingBlanks; i++) cells.push(null);
-  for (let day = 1; day <= daysInMonth; day++) cells.push(day);
-  return cells;
-}
+// 日期换算（dateKey / monthKey / shiftMonth / monthCells）和月历格子都搬到 calendar.js 了：
+// 日历页也要用同一套，两边各写一份迟早会不一样
 
 function logDayStart(value) {
   const date = new Date(value);
@@ -146,14 +114,14 @@ function logDayStart(value) {
 function countLogsByDay(item) {
   const counts = {};
   item.entries.forEach((entry) => {
-    const key = logDateKey(entry);
+    const key = dateKey(entry);
     counts[key] = (counts[key] || 0) + 1;
   });
   return counts;
 }
 
-function countLogsInMonth(item, monthKey) {
-  return item.entries.filter((entry) => logMonthKey(entry) === monthKey).length;
+function countLogsInMonth(item, month) {
+  return item.entries.filter((entry) => monthKey(entry) === month).length;
 }
 
 function lastLogEntry(item) {
@@ -409,8 +377,8 @@ function undoQuickLog() {
 
 function openLogDetail(id) {
   logDetailId = id;
-  logCalendarMonth = logMonthKey(nowFn());   // 每次进来都先看当月
-  logSelectedDay = logDateKey(nowFn());      // 底下默认列出今天的记录
+  logCalendarMonth = monthKey(nowFn());   // 每次进来都先看当月
+  logSelectedDay = dateKey(nowFn());      // 底下默认列出今天的记录
   render();
 }
 
@@ -686,7 +654,7 @@ function createLogStats(item) {
 
   const stats = [
     { label: '总次数', value: String(item.entries.length) },
-    { label: '本月', value: String(countLogsInMonth(item, logMonthKey(nowFn()))) },
+    { label: '本月', value: String(countLogsInMonth(item, monthKey(nowFn()))) },
     // 这里用"今天 / 昨天 / 5 天前"而不是完整时间，小方块塞不下那么长
     { label: '上次打卡', value: describeLastLog(item) }
   ];
@@ -711,98 +679,30 @@ function createLogStats(item) {
 }
 
 function createLogCalendar(item) {
-  const box = document.createElement('div');
-  box.className = 'log-calendar';
-
-  const header = document.createElement('div');
-  header.className = 'calendar-header';
-
-  const title = document.createElement('span');
-  title.className = 'calendar-title';
-  title.textContent = logCalendarMonth;
-
-  header.append(
-    createCalendarNav('‹', '上个月', -1),
-    title,
-    createCalendarNav('›', '下个月', 1)
-  );
-  box.appendChild(header);
-
-  const weekdays = document.createElement('div');
-  weekdays.className = 'calendar-weekdays';
-  LOG_WEEKDAYS.forEach((name) => {
-    const cell = document.createElement('div');
-    cell.className = 'calendar-weekday';
-    cell.textContent = name;
-    weekdays.appendChild(cell);
-  });
-  box.appendChild(weekdays);
-
   // 先一次性算好"每天几次"，别在每个格子里把所有记录重新数一遍
   const counts = countLogsByDay(item);
-  const today = logDateKey(nowFn());
 
-  const grid = document.createElement('div');
-  grid.className = 'calendar-grid';
-
-  logMonthCells(logCalendarMonth).forEach((day) => {
-    const cell = document.createElement('div');
-
-    if (day === null) {
-      cell.className = 'calendar-cell blank';   // 月初用来占位的空格子
-      grid.appendChild(cell);
-      return;
-    }
-
-    cell.className = 'calendar-cell';
-    const key = `${logCalendarMonth}-${String(day).padStart(2, '0')}`;
-    cell.dataset.date = key;
-
-    if (key === today) cell.classList.add('today');
-    if (key === logSelectedDay) cell.classList.add('selected');
-
-    // 打过卡就圈一个手写风格的圈。圈要先放，日期数字盖在上面
-    if (counts[key]) {
+  // 月历格子是和日历页共用的（calendar.js）。这一页的特别之处只有两点：
+  // 打过卡的日子画个手写风格的圈，以及点某天要更新这一页自己的选中状态
+  return createMonthGrid({
+    month: logCalendarMonth,
+    selected: logSelectedDay,
+    decorate: (cell, key) => {
+      if (!counts[key]) return;
       cell.classList.add('logged');
       cell.appendChild(createIcon('handCircle', 'hand-circle'));
-    }
-
-    const dayEl = document.createElement('span');
-    dayEl.className = 'calendar-day';
-    dayEl.textContent = String(day);
-    cell.appendChild(dayEl);
-
-    cell.addEventListener('click', () => {
+    },
+    onPick: (key) => {
       logSelectedDay = key;
       render();
-    });
-
-    grid.appendChild(cell);
+    },
+    onShiftMonth: (offset) => {
+      logCalendarMonth = shiftMonth(logCalendarMonth, offset);
+      // 选中的日子要跟着换到这个月，否则下面列的还是上个月那天的记录
+      logSelectedDay = `${logCalendarMonth}-01`;
+      render();
+    }
   });
-
-  box.appendChild(grid);
-  return box;
-}
-
-function createCalendarNav(symbol, label, offset) {
-  const btn = document.createElement('button');
-  btn.className = 'calendar-nav';
-  btn.dataset.offset = String(offset);
-  btn.textContent = symbol;
-  btn.title = label;
-  btn.addEventListener('click', () => {
-    logCalendarMonth = shiftLogMonth(logCalendarMonth, offset);
-    // 选中的日子要跟着换到这个月，否则下面列的还是上个月那天的记录
-    logSelectedDay = `${logCalendarMonth}-01`;
-    render();
-  });
-  return btn;
-}
-
-// '2026-09-11' → '9 月 11 日'
-function formatDayLabel(dateKey) {
-  const [, month, day] = dateKey.split('-').map(Number);
-  return `${month} 月 ${day} 日`;
 }
 
 // 月历下面：选中那天的每一次打卡，可以单独删掉某一条（比如事后才发现点错了）
@@ -811,7 +711,7 @@ function createLogEntryList(item) {
   box.className = 'log-entries';
 
   const entries = item.entries
-    .filter((entry) => logDateKey(entry) === logSelectedDay)
+    .filter((entry) => dateKey(entry) === logSelectedDay)
     .sort()
     .reverse();    // 新的在上面
 
@@ -829,7 +729,7 @@ function createLogEntryList(item) {
     // 已经过去、又没打卡的日子可以补录。
     // 今天不给这个入口 —— 直接点大数字更快；还没到的日子当然也补不了。
     // 日期都是 'YYYY-MM-DD' 这种定长格式，直接比字符串大小就是比先后
-    if (logSelectedDay < logDateKey(nowFn())) {
+    if (logSelectedDay < dateKey(nowFn())) {
       box.appendChild(createBackfillRow(item));
     }
 
