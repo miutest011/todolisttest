@@ -67,6 +67,12 @@
      放大之后页面和屏幕就对不上了。manipulation 只关掉这一种，滚动照常 */
   html {
     touch-action: manipulation;
+    /* 详情页往右滑返回时会临时伸到屏幕外面。不夹一下的话整个网页就能横着拖，
+       手机上表现为页面左右晃、右边露出一条白。
+       两个讲究：① 必须写在 html 上，写在 body 上只夹住 body 自己那一块，整页照样能横着拖（试过了）；
+       ② 用 clip 不用 hidden —— hidden 会让 html 变成一个"可滚动的盒子"，iPhone 上容易连累上下滚动；
+       clip 只是把伸出去的部分切掉，不制造滚动。老浏览器不认 clip 就当没写，只是滑动时能横着拖一下，不影响用 */
+    overflow-x: clip;
   }
 
   body {

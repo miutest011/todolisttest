@@ -1,4 +1,4 @@
-// 手指滑动的手势：详情页往下拉返回；清单页、打卡页的列表区左右滑切换顶部标签。
+// 手指滑动的手势：详情页往右滑返回；清单页、打卡页的列表区左右滑切换顶部标签。
 // 两个手势共用 app.js 里的 trackSwipe，测的是"手指怎么动 → 界面该怎么变 / 不该怎么变"。
 // 真正的手感（跟不跟手、会不会和页面滚动打架）只有真 iPhone 上才试得出来，这里管的是规则。
 // 复用 tests.js、tests-logs.js、tests-list-tags.js 里的工具，所以排在它们后面加载。
@@ -43,170 +43,173 @@ function touchMoveBlocked() {
   return event.defaultPrevented;
 }
 
-// 把整个网页滚到某个位置，测完滚回去（测试页自己也是个网页，别把你正在看的位置弄乱）
-function scrollWindowTo(y) {
-  const saved = window.scrollY;
-  window.scrollTo(0, y);
-  onCleanup(() => window.scrollTo(0, saved));
-}
-
 function openTaskDetailPage() {
   const { root } = setup({ categories: ['工作'], expandedCategory: '工作' });
   addTodo('工作', '写周报');
   click(root.querySelector('.todo-item'));
-  scrollWindowTo(0);
   return root;
 }
 
 
-// ========== 详情页往下拉返回 ==========
+// ========== 详情页往右滑返回 ==========
 
-test('下拉返回：任务详情页在顶上时，手指往下拉够远松手，回到清单页', () => {
+test('右滑返回：任务详情页手指往右滑够远松手，回到清单页', () => {
   const root = openTaskDetailPage();
   assertEqual(detailIndex, 0, '先确认进了详情页');
   editingDueFor = 0;   // 顺便确认和返回键一样，把"正在设截止时间"也收掉
   render();
 
-  fingerSwipe(root.querySelector('.detail-title'), 0, SWIPE_DISTANCE + 10);
+  fingerSwipe(root.querySelector('.detail-title'), SWIPE_DISTANCE + 10, 0);
 
   assertEqual(detailIndex, null, '回到列表了');
   assertEqual(editingDueFor, null, '和返回键一样收掉截止时间编辑，不然下次进详情页它还开着');
   assert(root.querySelector('.tab-bar'), '底部标签栏回来了');
 });
 
-test('下拉返回：打卡详情页也可以，回到打卡列表', () => {
+test('右滑返回：打卡详情页也可以，回到打卡列表', () => {
   const { root } = setup({ logItems: [logItem('喝水')] });
   openLogsTab(root);
   openLogDetailByTap(root, '喝水');
-  scrollWindowTo(0);
   editingLogItemId = 'log-喝水';
   render();
-  // 改名输入框一出来光标就在里面，而打字时是不许下拉返回的。收起键盘，只留着那个"正在改名"的状态
+  // 改名输入框一出来光标就在里面，而打字时是不许滑动返回的。收起键盘，只留着那个"正在改名"的状态
   root.querySelector('.edit-input').blur();
 
-  fingerSwipe(root.querySelector('.detail-page'), 0, SWIPE_DISTANCE + 10);
+  fingerSwipe(root.querySelector('.detail-page'), SWIPE_DISTANCE + 10, 0);
 
   assertEqual(logDetailId, null, '回到打卡列表');
   assertEqual(editingLogItemId, null, '和返回键一样收掉正在改的名字');
   assertEqual(currentTab, 'logs', '回的是打卡页，不是清单页');
 });
 
-test('下拉返回：按在详情页下面的空白处（不在详情页元素里）往下拉，也能回去', () => {
+test('右滑返回：按在详情页下面的空白处（不在详情页元素里）往右滑，也能回去', () => {
   openTaskDetailPage();
   // 详情页内容短时，下面那片空白按到的是整个网页，不是详情页那个元素
-  fingerSwipe(document.body, 0, SWIPE_DISTANCE + 10);
+  fingerSwipe(document.body, SWIPE_DISTANCE + 10, 0);
   assertEqual(detailIndex, null, '回到列表了');
 });
 
-test('下拉返回：拉的时候整页跟着手指往下走；拉得不够远、也不快，松手弹回原位、不返回', async () => {
-  const root = openTaskDetailPage();
-
-  fingerPress(root.querySelector('.detail-title'));
-  fingerMoveTo(100, 150);
-  assertEqual(root.querySelector('.detail-page').style.transform, 'translateY(50px)', '跟着手指走了 50px');
-  assert(touchMoveBlocked(), '拉的时候要拦住页面滚动，不然 iPhone 上整页会跟着回弹');
-
-  await sleep(FLING_TIME + 80);
-  fingerUp();
-
-  assertEqual(detailIndex, 0, '拉得不够远，还在详情页');
-  assertEqual(root.querySelector('.detail-page').style.transform, '', '弹回原位');
-});
-
-test('下拉返回：很快地往下一甩，没拉那么远也算', () => {
-  const root = openTaskDetailPage();
-  fingerSwipe(root.querySelector('.detail-title'), 0, FLING_DISTANCE + 6);
-  assertEqual(detailIndex, null, '甩一下就回去了');
-});
-
-test('下拉返回：甩得太短（手指抖一下）不算', () => {
-  const root = openTaskDetailPage();
-  fingerSwipe(root.querySelector('.detail-title'), 0, FLING_DISTANCE - 6);
-  assertEqual(detailIndex, 0, '还在详情页');
-});
-
-test('下拉返回：往上滑、横着滑都不管，页面照常滚，也不跟着手指挪', () => {
-  const root = openTaskDetailPage();
-  const title = root.querySelector('.detail-title');
-
-  fingerPress(title);
-  fingerMoveTo(100, 100 - SWIPE_DISTANCE - 10);
-  assertEqual(touchMoveBlocked(), false, '往上滑是翻页，不能拦');
-  assertEqual(root.querySelector('.detail-page').style.transform, '', '页面没被挪动');
-  fingerUp();
-  assertEqual(detailIndex, 0, '往上滑不返回');
-
-  // 横着为主、稍微带点往下
-  fingerSwipe(title, SWIPE_DISTANCE + 10, 30);
-  assertEqual(detailIndex, 0, '横着滑不返回');
-});
-
-test('下拉返回：先往上滑定了方向，同一下再往下拉回来，也不算', () => {
-  const root = openTaskDetailPage();
-  fingerPress(root.querySelector('.detail-title'));
-  fingerMoveTo(100, 80);                          // 先往上，这一下定成"不管"
-  fingerMoveTo(100, 100 + SWIPE_DISTANCE + 10);   // 再往下拉很远
-  fingerUp();
-  assertEqual(detailIndex, 0, '方向一旦定了就不改，不然页面会一会儿滚一会儿不滚');
-});
-
-test('下拉返回：页面已经往下翻过了，往下拉是翻回上面，不返回', () => {
+test('右滑返回：详情页往下翻过了照样能返回（返回是左右的事，和翻到哪儿无关）', () => {
   const root = openTaskDetailPage();
   const spacer = document.createElement('div');
   spacer.style.height = '3000px';
   document.body.appendChild(spacer);
-  onCleanup(() => spacer.remove());
+  onCleanup(() => { spacer.remove(); window.scrollTo(0, 0); });
   window.scrollTo(0, 200);
   assert(window.scrollY > 0, '先确认网页真的往下翻了');
 
-  fingerSwipe(root.querySelector('.detail-title'), 0, SWIPE_DISTANCE + 10);
+  fingerSwipe(root.querySelector('.detail-title'), SWIPE_DISTANCE + 10, 0);
+  assertEqual(detailIndex, null, '回到列表了');
+});
+
+test('右滑返回：滑的时候整页跟着手指往右走；滑得不够远、也不快，松手弹回原位、不返回', async () => {
+  const root = openTaskDetailPage();
+
+  fingerPress(root.querySelector('.detail-title'));
+  fingerMoveTo(150, 100);
+  assertEqual(root.querySelector('.detail-page').style.transform, 'translateX(50px)', '跟着手指走了 50px');
+  assert(touchMoveBlocked(), '滑的时候要拦住页面滚动，不然会斜着飘');
+
+  await sleep(FLING_TIME + 80);
+  fingerUp();
+
+  assertEqual(detailIndex, 0, '滑得不够远，还在详情页');
+  assertEqual(root.querySelector('.detail-page').style.transform, '', '弹回原位');
+});
+
+test('右滑返回：详情页会伸到屏幕外面，所以整个网页横向是夹住的', async () => {
+  await useAppStyles();
+  const root = openTaskDetailPage();
+
+  fingerPress(root.querySelector('.detail-title'));
+  fingerMoveTo(220, 100);
+  const page = root.querySelector('.detail-page');
+  const stickingOut = page.getBoundingClientRect().right > window.innerWidth;
+  fingerUp();
+
+  assert(stickingOut, '先确认详情页真的被推出屏幕右边了');
+  // 夹在 html 上（body 上不管用），而且用 clip 不用 hidden，免得 iPhone 上连累上下滚动
+  assertEqual(getComputedStyle(document.documentElement).overflowX, 'clip',
+    '没夹住的话，滑的时候整个网页能跟着横着拖，页面会左右晃、右边露出一条白');
+});
+
+test('右滑返回：很快地往右一甩，没滑那么远也算', () => {
+  const root = openTaskDetailPage();
+  fingerSwipe(root.querySelector('.detail-title'), FLING_DISTANCE + 6, 0);
+  assertEqual(detailIndex, null, '甩一下就回去了');
+});
+
+test('右滑返回：甩得太短（手指抖一下）不算', () => {
+  const root = openTaskDetailPage();
+  fingerSwipe(root.querySelector('.detail-title'), FLING_DISTANCE - 6, 0);
   assertEqual(detailIndex, 0, '还在详情页');
 });
 
-test('下拉返回：按在备注框里、或者正在打字时，往下拉不返回', () => {
+test('右滑返回：往左滑、上下滑都不管，页面照常滚，也不跟着手指挪', () => {
+  const root = openTaskDetailPage();
+  const title = root.querySelector('.detail-title');
+
+  fingerPress(title);
+  fingerMoveTo(100 - SWIPE_DISTANCE - 10, 100);
+  assertEqual(touchMoveBlocked(), false, '往左滑不是返回，不能拦');
+  assertEqual(root.querySelector('.detail-page').style.transform, '', '页面没被挪动');
+  fingerUp();
+  assertEqual(detailIndex, 0, '往左滑不返回，方向反了就不是"退回上一页"的意思');
+
+  // 竖着为主、稍微带点往右
+  fingerSwipe(title, 30, SWIPE_DISTANCE + 10);
+  assertEqual(detailIndex, 0, '上下滑是翻页，不返回');
+});
+
+test('右滑返回：先往左滑定了方向，同一下再往右滑回来，也不算', () => {
+  const root = openTaskDetailPage();
+  fingerPress(root.querySelector('.detail-title'));
+  fingerMoveTo(80, 100);                          // 先往左，这一下定成"不管"
+  fingerMoveTo(100 + SWIPE_DISTANCE + 10, 100);   // 再往右滑很远
+  fingerUp();
+  assertEqual(detailIndex, 0, '方向一旦定了就不改，不然页面会一会儿滚一会儿不滚');
+});
+
+test('右滑返回：按在备注框里、或者正在打字时，往右滑不返回', () => {
   const root = openTaskDetailPage();
   const note = root.querySelector('.note-input');
 
-  fingerSwipe(note, 0, SWIPE_DISTANCE + 10);
-  assertEqual(detailIndex, 0, '在备注框里拉可能是在选文字');
+  fingerSwipe(note, SWIPE_DISTANCE + 10, 0);
+  assertEqual(detailIndex, 0, '在备注框里滑可能是在选文字');
 
   note.focus();
-  fingerSwipe(root.querySelector('.detail-title'), 0, SWIPE_DISTANCE + 10);
+  fingerSwipe(root.querySelector('.detail-title'), SWIPE_DISTANCE + 10, 0);
   assertEqual(detailIndex, 0, '键盘开着时不返回，不然写了一半的东西一滑就没了');
   note.blur();
 });
 
-test('下拉返回：菜单开着时不返回；鼠标拖也不返回（电脑上有返回键）', () => {
+test('右滑返回：菜单开着时不返回；鼠标拖也不返回（电脑上有返回键）', () => {
   const root = openTaskDetailPage();
 
   click(root.querySelector('.page-header .menu-btn'));
   assert(root.querySelector('.menu'), '先确认菜单开了');
-  fingerSwipe(root.querySelector('.detail-title'), 0, SWIPE_DISTANCE + 10);
+  fingerSwipe(root.querySelector('.detail-title'), SWIPE_DISTANCE + 10, 0);
   assertEqual(detailIndex, 0, '菜单开着，手指一碰应该是关菜单');
 
   openMenuKey = null;
   render();
-  fingerSwipe(root.querySelector('.detail-title'), 0, SWIPE_DISTANCE + 10, { pointerType: 'mouse' });
+  fingerSwipe(root.querySelector('.detail-title'), SWIPE_DISTANCE + 10, 0, { pointerType: 'mouse' });
   assertEqual(detailIndex, 0, '鼠标不算');
 });
 
-test('下拉返回：拉到一半被系统打断（pointercancel），弹回去、不返回', () => {
+test('右滑返回：滑到一半被系统打断（pointercancel），弹回去、不返回', () => {
   const root = openTaskDetailPage();
-  fingerSwipe(root.querySelector('.detail-title'), 0, SWIPE_DISTANCE + 10, { end: 'pointercancel' });
+  fingerSwipe(root.querySelector('.detail-title'), SWIPE_DISTANCE + 10, 0, { end: 'pointercancel' });
   assertEqual(detailIndex, 0, '被打断不算数');
   assertEqual(root.querySelector('.detail-page').style.transform, '', '弹回原位');
 });
 
-test('下拉返回：在列表页上往下拉什么都不发生', () => {
+test('右滑返回：在列表页上往右滑不会跑进详情页，走的是切换标签那一套', () => {
   const { root } = setup({ categories: ['工作'], expandedCategory: '工作' });
   addTodo('工作', '写周报');
-  scrollWindowTo(0);
 
-  fingerPress(root.querySelector('.todo-item'));
-  fingerMoveTo(100, 100 + SWIPE_DISTANCE + 10);
-  assertEqual(touchMoveBlocked(), false, '列表页往下拉是在往上翻列表，不能拦');
-  fingerUp();
-  assertEqual([detailIndex, currentTab], [null, 'tasks'], '还在清单页');
+  fingerSwipe(root.querySelector('.todo-item'), SWIPE_DISTANCE + 10, 0);
+  assertEqual([detailIndex, currentTab, listTagFilter], [null, 'tasks', 'all'], '还在清单页的"所有"下');
 });
 
 

@@ -106,7 +106,6 @@ function neighborFilter(set, dx) {
 // 横着滑不会误触长按拖动：手指一动超过 MOVE_THRESHOLD，长按就作废了
 function enableTagSwipe(scroller, set) {
   trackSwipe(scroller, {
-    axis: 'x',
     canStart: canStartSwipe,
     canLock: () => true,
     onMove: (dx) => {
@@ -145,13 +144,8 @@ function showSwipedIn(dx) {
     bar.scrollLeft += (chipRect.left + chipRect.width / 2) - (barRect.left + barRect.width / 2);
   }
 
-  const scroller = appEl.querySelector('.page-scroll');
-  if (scroller && scroller.animate) {   // 老浏览器没有 animate，没动画也不影响用
-    scroller.animate(
-      [{ transform: `translateX(${dx < 0 ? 40 : -40}px)`, opacity: 0 }, { transform: 'none', opacity: 1 }],
-      { duration: 200, easing: 'ease-out' }
-    );
-  }
+  // 手指往左滑的话，新列表就从右边补进来（反之亦然）
+  slideIn(appEl.querySelector('.page-scroll'), dx < 0 ? 40 : -40);
 }
 
 // tag 为 null 表示"所有""已归档"这两个固定项，它们不能长按改名删除

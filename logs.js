@@ -588,7 +588,7 @@ function cancelLogItemDraft() {
 }
 
 // ---- 打卡详情页 ----
-// 回到打卡列表。左上角返回键和往下拉（app.js 的 trackSwipe）都走这里
+// 回到打卡列表。左上角返回键和往右滑（app.js 的 trackSwipe）都走这里
 function closeLogDetail() {
   logDetailId = null;
   editingLogItemId = null;
@@ -599,7 +599,7 @@ function closeLogDetail() {
 function createLogDetailPage(id) {
   const item = findLogItem(id);
   const page = document.createElement('div');
-  page.className = 'detail-page';     // 往下拉返回时靠这个找到要跟着手指走的整页
+  page.className = 'detail-page';     // 右滑返回时靠这个找到要跟着手指走的整页
 
   // 万一这个项目已经不在了，就只留一个返回按钮
   if (!item) {

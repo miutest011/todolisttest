@@ -93,7 +93,7 @@ function useStorage(fake) { storage = fake; }
 - `createTodoItem(todo, index, { draggable, pinnable })` — 同一条任务在不同页面上长得不完全一样：
   "今天"页混着不同清单的任务，传 `draggable: false, pinnable: false`（没有顺序可言、置顶说不清在哪置顶）。
   **一个按钮放在某个页面上会让人分不清它作用在哪时，就别在那个页面放。**
-- `trackSwipe(target, { axis, canStart, canLock, onMove, onRelease })` — 手指滑动手势的公共部分：只认手指、走过 `MOVE_THRESHOLD` 才定方向、定了就不改、归我们的那一下拦住页面滚动、松手时算"滑得够远 / 甩得够快"。详情页下拉返回（挂在 `document` 上，因为详情页内容短时下面的空白不属于它）和列表区左右滑切换标签（`tags.js` 的 `enableTagSwipe(scroller, set)`，挂在 `.page-scroll` 上）都用它。什么时候不算手势统一在 `canStartSwipe()`：按在输入框里、正在打字、菜单开着。**再加手势就用它，别再写一套按下 / 移动 / 松手。**
+- `trackSwipe(target, { canStart, canLock, onMove, onRelease })` — 手指左右滑手势的公共部分：只认手指、走过 `MOVE_THRESHOLD` 才定方向（左右为主才归它）、定了就不改、归我们的那一下拦住页面滚动、松手时算"滑得够远 / 甩得够快"。详情页往右滑返回（挂在 `document` 上，因为详情页内容短时下面的空白不属于它）和列表区左右滑切换标签（`tags.js` 的 `enableTagSwipe(scroller, set)`，挂在 `.page-scroll` 上）都用它。什么时候不算手势统一在 `canStartSwipe()`：按在输入框里、正在打字、菜单开着。**再加手势就用它，别再写一套按下 / 移动 / 松手。**
 - `createFab(label, onClick)` — 右下角浮着的蓝色圆形 + 按钮。`label` 给读屏软件用。页面上放了它，记得给这一页的容器加 `has-fab`（列表底部留空）。
 - `createDueButton(dueAt, remindBefore, onClick)` / `createDueEditor(dueAt, remindBefore, { onSave, onCancel, onClear })` — 闹钟和它下面的设置区。
   **只管显示和收集输入，不管存到哪**：详情页存到任务上（`setDue`），新建任务面板存到草稿里，加任务时再带上。
