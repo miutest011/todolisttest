@@ -701,6 +701,12 @@ function createLogCalendar(item) {
       // 选中的日子要跟着换到这个月，否则下面列的还是上个月那天的记录
       logSelectedDay = `${logCalendarMonth}-01`;
       render();
+    },
+    // 双击月份回到今天，和日历页一个操作
+    onToday: () => {
+      logCalendarMonth = monthKey(nowFn());
+      logSelectedDay = dateKey(nowFn());
+      render();
     }
   });
 }

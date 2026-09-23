@@ -74,29 +74,84 @@ function formatDayLabel(key) {
   return `${month} 月 ${day} 日`;
 }
 
+// '2026-09' → '2026 年 9 月'。三种视图顶上那行统一用中文写法，
+// 别一个地方写 2026-09、另一个地方写 2026 年 9 月
+function formatMonthLabel(month) {
+  const [year, monthNumber] = month.split('-').map(Number);
+  return `${year} 年 ${monthNumber} 月`;
+}
+
+// 一周有可能跨月（甚至跨年），那就把两头都写出来，否则只看一个月份会以为翻错了
+function formatWeekLabel(days) {
+  const first = monthKey(days[0]);
+  const last = monthKey(days[days.length - 1]);
+  if (first === last) return formatMonthLabel(first);
+  if (first.slice(0, 4) === last.slice(0, 4)) {
+    return `${formatMonthLabel(first)} - ${Number(last.slice(5))} 月`;
+  }
+  return `${formatMonthLabel(first)} - ${formatMonthLabel(last)}`;
+}
+
+// 连点两下（电脑上就是双击）。
+// 为什么不用浏览器自带的 dblclick：iPhone 上双击是系统的手势（缩放、选词），
+// 这个事件经常根本不发 —— 在模拟器里实测就是没反应。自己数两次点击的间隔最稳，
+// 电脑上的鼠标双击也照样认
+// 两下之间隔多久还算"连点两下"（毫秒）。
+// 配套的魔数：tests-calendar.js 里"点得太慢不算"那条要等得比这个久一点，改这里记得改那边
+const DOUBLE_TAP_GAP = 300;
+
+function onDoubleTap(element, handler) {
+  let lastTap = 0;
+
+  element.addEventListener('click', (event) => {
+    if (event.timeStamp - lastTap <= DOUBLE_TAP_GAP) {
+      lastTap = 0;              // 认过一次就清零，连点三下不会算成两次
+      handler();
+      return;
+    }
+    lastTap = event.timeStamp;
+  });
+}
+
+// 三种视图共用的表头：左右两个翻页箭头夹着中间的标题。
+// 连点两下标题回到今天 —— 翻远了想回来，不用一格一格翻回去
+function createNavHeader({ title, prev, next, onPrev, onNext, onToday }) {
+  const header = document.createElement('div');
+  header.className = 'calendar-header';
+
+  const label = document.createElement('span');
+  label.className = 'calendar-title';
+  label.textContent = title;
+
+  if (onToday) {
+    label.classList.add('can-go-today');
+    label.title = '双击回到今天';
+    onDoubleTap(label, onToday);
+  }
+
+  header.append(createCalendarNav('‹', prev, onPrev), label, createCalendarNav('›', next, onNext));
+  return header;
+}
+
 // ---- 共用的月历格子 ----
 // 日子怎么标、点了怎么办，由用它的那一页决定：
 //   month: '2026-09'，selected: '2026-09-11' 或 null
 //   decorate(cell, key)：往某一天的格子里加点东西（打卡页加手写圈，日历页加小圆点）
 //   onPick(key)：点了某一天
 //   onShiftMonth(offset)：点了上个月 / 下个月
-function createMonthGrid({ month, selected, decorate, onPick, onShiftMonth }) {
+//   onToday()：双击了标题（回到今天）。不传就不给双击
+function createMonthGrid({ month, selected, decorate, onPick, onShiftMonth, onToday }) {
   const box = document.createElement('div');
   box.className = 'log-calendar';
 
-  const header = document.createElement('div');
-  header.className = 'calendar-header';
-
-  const title = document.createElement('span');
-  title.className = 'calendar-title';
-  title.textContent = month;
-
-  header.append(
-    createCalendarNav('‹', '上个月', () => onShiftMonth(-1)),
-    title,
-    createCalendarNav('›', '下个月', () => onShiftMonth(1))
-  );
-  box.appendChild(header);
+  box.appendChild(createNavHeader({
+    title: formatMonthLabel(month),
+    prev: '上个月',
+    next: '下个月',
+    onPrev: () => onShiftMonth(-1),
+    onNext: () => onShiftMonth(1),
+    onToday: onToday
+  }));
 
   const weekdays = document.createElement('div');
   weekdays.className = 'calendar-weekdays';
@@ -295,26 +350,34 @@ function createMonthBlock() {
       const todayKey = dateKey(nowFn());
       calendarDay = month === monthKey(todayKey) ? todayKey : `${month}-01`;
       render();
-    }
+    },
+    onToday: goToToday
   });
 }
 
-// 一行七天。上面占的地方小，屏幕大部分留给任务列表
+// 一行七天。上面占的地方小，屏幕大部分留给任务列表。
+// 顶上要写年月：翻远了之后，光看 21 22 23 这几个数字根本不知道是哪个月
 function createWeekStrip() {
   const box = document.createElement('div');
-  box.className = 'week-strip';
+  box.className = 'week-block';
 
-  box.appendChild(createCalendarNav('‹', '上一周', () => {
-    calendarDay = shiftDays(calendarDay, -7);
-    render();
+  const days = weekCells(calendarDay);
+
+  box.appendChild(createNavHeader({
+    title: formatWeekLabel(days),
+    prev: '上一周',
+    next: '下一周',
+    onPrev: () => { calendarDay = shiftDays(calendarDay, -7); render(); },
+    onNext: () => { calendarDay = shiftDays(calendarDay, 7); render(); },
+    onToday: goToToday
   }));
 
-  const days = document.createElement('div');
-  days.className = 'week-days';
+  const row = document.createElement('div');
+  row.className = 'week-days';
   const marked = daysWithTasks();
   const todayKey = dateKey(nowFn());
 
-  weekCells(calendarDay).forEach((key) => {
+  days.forEach((key) => {
     const cell = document.createElement('button');
     cell.className = 'week-day';
     cell.dataset.date = key;
@@ -339,43 +402,32 @@ function createWeekStrip() {
       calendarDay = key;
       render();
     });
-    days.appendChild(cell);
+    row.appendChild(cell);
   });
 
-  box.appendChild(days);
-  box.appendChild(createCalendarNav('›', '下一周', () => {
-    calendarDay = shiftDays(calendarDay, 7);
-    render();
-  }));
-
+  box.appendChild(row);
   return box;
 }
 
 // 只看一天：左右翻一天，中间写清楚是哪天、星期几
 function createDayHeader() {
-  const box = document.createElement('div');
-  box.className = 'day-header';
+  const label = `${formatMonthLabel(monthKey(calendarDay))} ${Number(calendarDay.slice(8))} 日 周${WEEKDAYS[weekdayIndex(calendarDay)]}`;
 
-  box.appendChild(createCalendarNav('‹', '前一天', () => {
-    calendarDay = shiftDays(calendarDay, -1);
-    render();
-  }));
+  return createNavHeader({
+    // 看的正好是今天时在后面缀一句，因为日视图上没有"今天"那个标记
+    title: calendarDay === dateKey(nowFn()) ? `${label} · 今天` : label,
+    prev: '前一天',
+    next: '后一天',
+    onPrev: () => { calendarDay = shiftDays(calendarDay, -1); render(); },
+    onNext: () => { calendarDay = shiftDays(calendarDay, 1); render(); },
+    onToday: goToToday
+  });
+}
 
-  const title = document.createElement('div');
-  title.className = 'day-title';
-  const [year] = calendarDay.split('-').map(Number);
-  const weekday = WEEKDAYS[weekdayIndex(calendarDay)];
-  title.textContent = calendarDay === dateKey(nowFn())
-    ? `今天 · ${formatDayLabel(calendarDay)} 周${weekday}`
-    : `${year} 年 ${formatDayLabel(calendarDay)} 周${weekday}`;
-  box.appendChild(title);
-
-  box.appendChild(createCalendarNav('›', '后一天', () => {
-    calendarDay = shiftDays(calendarDay, 1);
-    render();
-  }));
-
-  return box;
+// 双击顶上那行日期就回到今天。翻远了想回来，不用一格一格翻
+function goToToday() {
+  calendarDay = dateKey(nowFn());
+  render();
 }
 
 function createTaskDot() {

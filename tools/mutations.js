@@ -1353,8 +1353,8 @@ const MUTATIONS = [
     group: '日历页：月 / 周 / 日',
     name: '周视图翻页只翻一天',
     file: 'calendar.js',
-    find: "    calendarDay = shiftDays(calendarDay, 7);",
-    replace: "    calendarDay = shiftDays(calendarDay, 1);"
+    find: "    onNext: () => { calendarDay = shiftDays(calendarDay, 7); render(); },",
+    replace: "    onNext: () => { calendarDay = shiftDays(calendarDay, 1); render(); },"
   },
   {
     group: '日历页：月 / 周 / 日',
@@ -1367,8 +1367,8 @@ const MUTATIONS = [
     group: '日历页：月 / 周 / 日',
     name: '日视图翻页一下翻一周',
     file: 'calendar.js',
-    find: "    calendarDay = shiftDays(calendarDay, 1);\n    render();\n  }));\n\n  return box;\n}\n\nfunction createTaskDot()",
-    replace: "    calendarDay = shiftDays(calendarDay, 7);\n    render();\n  }));\n\n  return box;\n}\n\nfunction createTaskDot()"
+    find: "    onNext: () => { calendarDay = shiftDays(calendarDay, 1); render(); },",
+    replace: "    onNext: () => { calendarDay = shiftDays(calendarDay, 7); render(); },"
   },
   {
     group: '日历页：月 / 周 / 日',
@@ -1474,6 +1474,71 @@ const MUTATIONS = [
     file: 'app.js',
     find: "const EXPORTED_KEYS = ['categories', 'todos', 'expandedCategory', 'listTags', 'categoryMeta', 'logTags', 'logItems', 'calendarView'];",
     replace: "const EXPORTED_KEYS = ['categories', 'todos', 'expandedCategory', 'listTags', 'categoryMeta', 'logTags', 'logItems'];"
+  },
+
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '周视图顶上不写年月（翻远了不知道是哪个月）',
+    file: 'calendar.js',
+    find: "    title: formatWeekLabel(days),",
+    replace: "    title: '',"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '周视图跨月时只写头一个月',
+    file: 'calendar.js',
+    find: "  if (first === last) return formatMonthLabel(first);",
+    replace: "  if (true) return formatMonthLabel(first);"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '顶上的年月又写成 2026-09（和别处不一致）',
+    file: 'calendar.js',
+    find: "  return `${year} 年 ${monthNumber} 月`;",
+    replace: "  return month;"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '双击标题不回到今天',
+    file: 'calendar.js',
+    find: "    onDoubleTap(label, onToday);",
+    replace: "    label.title = '双击回到今天';"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '单击标题就跳回今天（翻页时手一抖就跑了）',
+    file: 'calendar.js',
+    find: "    if (event.timeStamp - lastTap <= DOUBLE_TAP_GAP) {",
+    replace: "    if (true) {"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '日视图标题不写星期几',
+    file: 'calendar.js',
+    find: "  const label = `${formatMonthLabel(monthKey(calendarDay))} ${Number(calendarDay.slice(8))} 日 周${WEEKDAYS[weekdayIndex(calendarDay)]}`;",
+    replace: "  const label = `${formatMonthLabel(monthKey(calendarDay))} ${Number(calendarDay.slice(8))} 日`;"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '日视图看的是今天时也不说一声',
+    file: 'calendar.js',
+    find: "    title: calendarDay === dateKey(nowFn()) ? `${label} · 今天` : label,",
+    replace: "    title: label,"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '打卡详情的月历双击月份不回今天',
+    file: 'logs.js',
+    find: "    // 双击月份回到今天，和日历页一个操作\n    onToday: () => {\n      logCalendarMonth = monthKey(nowFn());\n      logSelectedDay = dateKey(nowFn());\n      render();\n    }",
+    replace: "    onToday: null"
+  },
+
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '两下点击隔多久都算双击（半天前点过一下也作数）',
+    file: 'calendar.js',
+    find: "const DOUBLE_TAP_GAP = 300;",
+    replace: "const DOUBLE_TAP_GAP = 100000;"
   },
 
   // ---------- 测试工具自己 ----------

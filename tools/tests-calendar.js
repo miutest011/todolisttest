@@ -58,7 +58,7 @@ test('日历：默认就是月视图，选中今天，画的是本月', () => {
   openCalendar(root);
 
   assertEqual(calendarView, 'month', '默认月视图：一眼看完整个月，最不空');
-  assertEqual(root.querySelector('.calendar-title').textContent, THIS_MONTH, '画的是本月');
+  assertEqual(root.querySelector('.calendar-title').textContent, formatMonthLabel(THIS_MONTH), '画的是本月，写成中文的年月');
   assert(calendarDayCell(root, Number(TODAY.slice(8))).classList.contains('selected'), '默认选中今天');
   assert(calendarDayCell(root, Number(TODAY.slice(8))).classList.contains('today'), '今天有自己的标记');
 });
@@ -127,7 +127,7 @@ test('日历：翻到上个月默认选中 1 号，翻回本月回到今天', ()
   openCalendar(root);
 
   click(calendarNav(root, '上个月'));
-  assertEqual(root.querySelector('.calendar-title').textContent, shiftMonth(THIS_MONTH, -1), '翻到上个月');
+  assertEqual(root.querySelector('.calendar-title').textContent, formatMonthLabel(shiftMonth(THIS_MONTH, -1)), '翻到上个月');
   assertEqual(calendarDay, shiftMonth(THIS_MONTH, -1) + '-01', '选中那个月 1 号，否则下面列的还是上个月那天的任务');
 
   click(calendarNav(root, '下个月'));
@@ -189,14 +189,16 @@ test('日历：日视图写清楚是哪天、星期几，左右翻是一天', ()
   openCalendar(root);
   switchTo(root, '日');
 
-  const title = root.querySelector('.day-title').textContent;
-  assert(title.includes('今天'), '看的就是今天时直接说"今天"，实际：' + title);
-  assert(title.includes(formatDayLabel(TODAY)), '也要写出具体日期');
+  const title = root.querySelector('.calendar-title').textContent;
+  assert(title.includes(formatMonthLabel(THIS_MONTH)), '年月要写出来，实际：' + title);
+  assert(title.includes(String(Number(TODAY.slice(8))) + ' 日'), '也要写出是几号');
+  assert(title.includes('周'), '还要写星期几');
+  assert(title.includes('今天'), '看的正好是今天时缀一句（日视图上没有"今天"那个标记）');
   assertEqual(textsOf(root, '.todo-text'), ['今天的事'], '下面是这天的任务');
 
   click(calendarNav(root, '后一天'));
   assertEqual(calendarDay, shiftDays(TODAY, 1), '往后一天');
-  assert(!root.querySelector('.day-title').textContent.includes('今天'), '不是今天了就别再叫"今天"');
+  assert(!root.querySelector('.calendar-title').textContent.includes('今天'), '不是今天了就别再叫"今天"');
   assert(root.querySelector('.day-empty'), '明天没任务，要说一声');
 
   click(calendarNav(root, '前一天'));
@@ -246,6 +248,102 @@ test('日历：切换按钮上要标出现在看的是哪个视图', () => {
 });
 
 
+// ========== 顶上那行日期 ==========
+
+test('日历：三种视图顶上都写着年月，写法一致', () => {
+  const { root } = calendarSetup();
+  openCalendar(root);
+
+  const title = () => root.querySelector('.calendar-title').textContent;
+  assertEqual(title(), formatMonthLabel(THIS_MONTH), '月视图');
+
+  switchTo(root, '周');
+  assert(title().includes(formatMonthLabel(THIS_MONTH)),
+    '周视图也要写年月：翻远了光看 21 22 23 这几个数字，不知道是哪个月，实际：' + title());
+
+  switchTo(root, '日');
+  assert(title().includes(formatMonthLabel(THIS_MONTH)), '日视图同样，实际：' + title());
+});
+
+test('日历：周视图跨月时，两个月份都写出来', () => {
+  const { root } = calendarSetup();
+  openCalendar(root);
+  switchTo(root, '周');
+
+  // 挪到月底那一周（这一周一定跨月）
+  const [year, month] = THIS_MONTH.split('-').map(Number);
+  const lastDay = new Date(year, month, 0).getDate();
+  calendarDay = `${THIS_MONTH}-${lastDay}`;
+  render();
+
+  const days = [...root.querySelectorAll('.week-day')].map((cell) => cell.dataset.date);
+  const title = root.querySelector('.calendar-title').textContent;
+  if (monthKey(days[0]) === monthKey(days[6])) {
+    skip('这个月最后一周正好没跨月，换个月份才测得到');
+  }
+  assert(title.includes(String(Number(monthKey(days[0]).slice(5))) + ' 月'), '写了头一个月，实际：' + title);
+  assert(title.includes(String(Number(monthKey(days[6]).slice(5))) + ' 月'), '也写了后一个月，实际：' + title);
+});
+
+test('日历：双击顶上那行日期回到今天（月 / 周 / 日都行）', () => {
+  const { root } = calendarSetup();
+  openCalendar(root);
+
+  const goFarAndBack = (label) => {
+    switchTo(root, label);
+    calendarDay = shiftDays(TODAY, 40);      // 翻到很远的地方
+    render();
+    assert(calendarDay !== TODAY, label + '视图：先确认翻走了');
+
+    doubleClick(root.querySelector('.calendar-title'));
+    assertEqual(calendarDay, TODAY, label + '视图：双击标题就回到今天，不用一格一格翻回来');
+  };
+
+  goFarAndBack('月');
+  goFarAndBack('周');
+  goFarAndBack('日');
+});
+
+test('日历：两下点得太慢不算（隔久了是两次单击，不是连点两下）', async () => {
+  const { root } = calendarSetup();
+  openCalendar(root);
+  calendarDay = shiftDays(TODAY, 40);
+  render();
+
+  const title = root.querySelector('.calendar-title');
+  click(title);
+  // 写死 380，不引用 DOUBLE_TAP_GAP：变异测试会把那个常量改大，
+  // 引用它的话这里就跟着睡了 100 秒，直接超时（真踩过）
+  await sleep(380);
+  click(title);
+
+  assertEqual(calendarDay, shiftDays(TODAY, 40), '隔了半天才点第二下，不该跳回今天');
+});
+
+test('日历：单击标题不动（只有连点两下才回今天，免得翻页时手一抖就跳走）', () => {
+  const { root } = calendarSetup();
+  openCalendar(root);
+  calendarDay = shiftDays(TODAY, 40);
+  render();
+
+  click(root.querySelector('.calendar-title'));
+  assertEqual(calendarDay, shiftDays(TODAY, 40), '单击不该有反应');
+});
+
+test('打卡详情：月历上双击月份也回到今天（和日历页一个操作）', () => {
+  const { root } = setup({ logItems: [logItem('喝水')] });
+  openLogsTab(root);
+  openLogDetailByTap(root, '喝水');
+
+  click(calendarNav(root, '上个月'));
+  assertEqual(logCalendarMonth, shiftMonth(THIS_MONTH, -1), '先翻走');
+
+  doubleClick(root.querySelector('.calendar-title'));
+  assertEqual(logCalendarMonth, THIS_MONTH, '回到本月');
+  assertEqual(logSelectedDay, TODAY, '下面列的也回到今天');
+});
+
+
 // ========== 记住选的视图 ==========
 
 test('日历：选了哪个视图会存起来，重开应用还是它', () => {
@@ -262,7 +360,7 @@ test('日历：选了哪个视图会存起来，重开应用还是它', () => {
   openCalendar(again);
 
   assertEqual(calendarView, 'week', '还是上次选的周视图');
-  assert(again.querySelector('.week-strip'), '画出来的也是周视图');
+  assert(again.querySelector('.week-days'), '画出来的也是周视图');
   assertEqual(calendarDay, TODAY, '但看的日子回到今天 —— 每次打开都从今天开始');
 });
 

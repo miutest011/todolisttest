@@ -350,7 +350,7 @@ test('打卡详情：打过卡的日子用手写圈圈出，不显示次数', ()
   openLogsTab(root);
   openLogDetailByTap(root, '喝水');
 
-  assertEqual(root.querySelector('.calendar-title').textContent, '2026-09', '默认显示当月');
+  assertEqual(root.querySelector('.calendar-title').textContent, '2026 年 9 月', '默认显示当月');
   assert(calendarCell(root, 5).querySelector('.hand-circle'), '5 号打过卡，应该被圈出来');
   assert(calendarCell(root, 6).querySelector('.hand-circle'), '6 号打过卡，应该被圈出来');
   assertEqual(calendarCell(root, 7).querySelector('.hand-circle'), null, '7 号没打卡，不该有圈');
@@ -412,7 +412,7 @@ test('打卡详情：月历能翻到上个月，选中那天就看到当时的�
 
   click(calendarNav(root, '上个月'));
 
-  assertEqual(root.querySelector('.calendar-title').textContent, '2026-08', '应该翻到 8 月');
+  assertEqual(root.querySelector('.calendar-title').textContent, '2026 年 8 月', '应该翻到 8 月');
   assert(calendarCell(root, 20).querySelector('.hand-circle'), '8 月 20 号应该被圈出来');
   assert(calendarCell(root, 1).classList.contains('selected'), '翻到别的月份时默认选中这个月 1 号');
 

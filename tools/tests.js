@@ -82,6 +82,13 @@ function click(element) {
   element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 }
 
+// 连点两下。故意不发 dblclick：iPhone 上那个事件经常不发，
+// 代码是自己数两次点击间隔的，测试也要照着真实情况来
+function doubleClick(element) {
+  click(element);
+  click(element);
+}
+
 function press(element, key) {
   element.dispatchEvent(new KeyboardEvent('keydown', { key: key, bubbles: true }));
 }

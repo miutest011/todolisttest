@@ -236,16 +236,12 @@
     display: none;
   }
 
-  /* 周视图：一行七天，左右各一个翻页箭头 */
-  .week-strip {
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
+  /* 周视图：上面一行年月（和月视图同一个表头），下面一行七天 */
+  .week-block {
     margin-bottom: var(--space-4);
   }
 
   .week-days {
-    flex: 1;
     display: flex;
     gap: var(--space-1);
   }
@@ -280,20 +276,6 @@
   .week-day.selected {
     border-color: var(--accent);
     background: #eaf2fb;
-  }
-
-  /* 日视图：只有一行标题加左右箭头 */
-  .day-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: var(--space-4);
-  }
-
-  .day-title {
-    font-size: var(--text-md);
-    font-weight: 600;
-    color: var(--text-body);
   }
 
   /* 这一天没有任务时的那行小字。比 .empty-state 轻，因为上面还有个日历撑着 */
@@ -443,6 +425,12 @@
     font-size: var(--text-md);
     font-weight: 600;
     color: var(--text-title);
+  }
+
+  /* 双击就回到今天。手机上没有 hover 提示，只能靠这一点点样式暗示它可以点 */
+  .calendar-title.can-go-today {
+    cursor: pointer;
+    user-select: none;          /* 双击别把文字选中了 */
   }
 
   .calendar-nav {
