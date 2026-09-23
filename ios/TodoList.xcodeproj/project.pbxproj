@@ -17,6 +17,7 @@
 		AA10000000000000000203 /* app.js in Resources */ = {isa = PBXBuildFile; fileRef = AA20000000000000000203 /* app.js */; };
 		AA10000000000000000204 /* tags.js in Resources */ = {isa = PBXBuildFile; fileRef = AA20000000000000000204 /* tags.js */; };
 		AA10000000000000000207 /* calendar.js in Resources */ = {isa = PBXBuildFile; fileRef = AA20000000000000000207 /* calendar.js */; };
+		AA10000000000000000208 /* platform.html in Resources */ = {isa = PBXBuildFile; fileRef = AA20000000000000000208 /* platform.html */; };
 		AA10000000000000000205 /* logs.js in Resources */ = {isa = PBXBuildFile; fileRef = AA20000000000000000205 /* logs.js */; };
 		AA10000000000000000206 /* native.js in Resources */ = {isa = PBXBuildFile; fileRef = AA20000000000000000206 /* native.js */; };
 		AA10000000000000000300 /* Icon-40.png in Resources */ = {isa = PBXBuildFile; fileRef = AA20000000000000000300 /* Icon-40.png */; };
@@ -40,6 +41,7 @@
 		AA20000000000000000203 /* app.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = app.js; path = ../app.js; sourceTree = "<group>"; };
 		AA20000000000000000204 /* tags.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = tags.js; path = ../tags.js; sourceTree = "<group>"; };
 		AA20000000000000000207 /* calendar.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = calendar.js; path = ../calendar.js; sourceTree = "<group>"; };
+		AA20000000000000000208 /* platform.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; name = platform.html; path = ../tools/platform.html; sourceTree = "<group>"; };
 		AA20000000000000000205 /* logs.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = logs.js; path = ../logs.js; sourceTree = "<group>"; };
 		AA20000000000000000206 /* native.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = native.js; path = ../native.js; sourceTree = "<group>"; };
 		AA20000000000000000300 /* Icon-40.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = "Icon-40.png"; path = "AppIcons/Icon-40.png"; sourceTree = "<group>"; };
@@ -100,6 +102,7 @@
 				AA20000000000000000203 /* app.js */,
 				AA20000000000000000204 /* tags.js */,
 				AA20000000000000000207 /* calendar.js */,
+				AA20000000000000000208 /* platform.html */,
 				AA20000000000000000205 /* logs.js */,
 				AA20000000000000000206 /* native.js */,
 			);
@@ -184,6 +187,7 @@
 				AA10000000000000000203 /* app.js in Resources */,
 				AA10000000000000000204 /* tags.js in Resources */,
 				AA10000000000000000207 /* calendar.js in Resources */,
+				AA10000000000000000208 /* platform.html in Resources */,
 				AA10000000000000000205 /* logs.js in Resources */,
 				AA10000000000000000206 /* native.js in Resources */,
 			);

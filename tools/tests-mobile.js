@@ -516,12 +516,48 @@ test('新建清单：在标签行右边的 ⋯ 里；打卡页的标签行没有
 // 手机上真实使用时这两个事件一定会发，所以这里按真实浏览器的顺序自己补发：
 // 先离开旧输入框（此时焦点已经不在它身上），发 focusout 并带上"焦点要去哪"，再进新输入框、发 focusin。
 // 窗口有焦点时浏览器自己也会发一遍，处理函数重复跑两次结果一样，不影响
+// 这个环境会不会真的发 focus 事件？
+// 窗口没焦点时（开着测试页、人在别的窗口）浏览器不发，得我们自己补；
+// 窗口有焦点时（比如 iPhone 上的 Safari）浏览器自己会发，这时再补就乱套了 ——
+// blur() 会先发一个"不知道接下来去哪"的 focusout，把 typing 提前摘掉，补发的那个已经晚了。
+// 这个差别是把整套测试搬进真 WebKit 跑才发现的
+let realFocusEvents = null;
+
+function focusEventsAreReal() {
+  if (realFocusEvents === null) {
+    const probe = document.createElement('input');
+    document.body.appendChild(probe);
+    let fired = false;
+    probe.addEventListener('focusin', () => { fired = true; });
+    probe.focus();
+    probe.remove();
+    realFocusEvents = fired;
+  }
+  return realFocusEvents;
+}
+
 function focusField(field) {
-  field.focus();
-  field.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+  // 先探测再设焦点：探测会临时建一个输入框并让它拿到焦点，
+  // 放在后面的话它会把刚设好的焦点抢走（应用于是把 typing 摘了）——
+  // 连跑两遍结果不一样，就是这么露馅的
+  const real = focusEventsAreReal();
+
+  focusOrSkip(field);
+  // 浏览器自己会发的话就别补了，补出来的是第二遍
+  if (!real) {
+    field.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+  }
 }
 
 function leaveField(field, next = null) {
+  // 浏览器会发真事件：直接按真实的方式操作（点进下一个输入框），
+  // 它自己会发出带着"焦点要去哪"的 focusout，顺序和真人操作完全一致
+  if (focusEventsAreReal()) {
+    if (next) focusOrSkip(next);
+    else field.blur();
+    return;
+  }
+
   field.blur();
   field.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: next }));
   if (next) focusField(next);
@@ -637,11 +673,23 @@ test('页面骨架：往下滚时标签行一动不动，滚的只是清单那�
   const tagTop = tagRow.getBoundingClientRect().top;
   const headerTop = firstHeader.getBoundingClientRect().top;
 
+  // 拿一个最普通的 fixed 元素当尺子。
+  // iPhone 的 Safari 在滚动时不会立刻更新 fixed 元素的坐标（滚完才更新），
+  // 直接断言"标签行一动不动"在那边就会红 —— 其实页面没问题，是引擎的算法不同。
+  // 改成"和标准 fixed 元素动得一样多"，哪个引擎都成立，也照样能抓住"页面跟着网页滚走"
+  const ruler = document.createElement('div');
+  ruler.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px';
+  document.body.appendChild(ruler);
+  onCleanup(() => ruler.remove());
+  const rulerTop = ruler.getBoundingClientRect().top;
+
   scroller.scrollTop = 300;
   window.scrollTo(0, 400);    // 整个网页也滚一下：页面钉在屏幕上，不该受影响
 
+  const rulerMoved = ruler.getBoundingClientRect().top - rulerTop;
   assert(scroller.scrollTop > 0, '清单那一块确实滚了');
-  assertEqual(tagRow.getBoundingClientRect().top, tagTop, '标签行不跟着滚');
+  assertEqual(tagRow.getBoundingClientRect().top - tagTop, rulerMoved,
+    `标签行要和一个标准的 fixed 元素动得一样多（这个引擎里 fixed 元素滚动后位移 ${rulerMoved}）`);
   assert(firstHeader.getBoundingClientRect().top < headerTop, '清单跟着滚上去了');
 });
 
@@ -650,9 +698,17 @@ test('页面骨架：滚动条藏起来了（电脑和 iPhone 两种写法都有
   const { root } = setup({ categories: ['工作'] });
 
   const scroller = root.querySelector('.page-scroll');
-  assertEqual(getComputedStyle(scroller).scrollbarWidth, 'none', '电脑、安卓上的写法：scrollbar-width: none');
-
   const sheet = [...document.styleSheets].find((s) => s.ownerNode && s.ownerNode.textContent.includes('--text-input'));
+
+  // Safari 17 还不认 scrollbar-width（18.2 才支持），iPhone 上真正起作用的是下面那条 ::-webkit-scrollbar。
+  // 所以认这个属性的引擎上量计算值，不认的就查样式表里写没写 —— 否则在真 WebKit 里跑会红，而应用其实没问题
+  if (CSS.supports('scrollbar-width', 'none')) {
+    assertEqual(getComputedStyle(scroller).scrollbarWidth, 'none', '电脑、安卓上的写法：scrollbar-width: none');
+  } else {
+    // 不认识的声明会在解析时被直接丢掉，所以规则对象里也读不到，只能查样式表原文
+    assert(sheet.ownerNode.textContent.includes('scrollbar-width: none'),
+      '这个引擎不认 scrollbar-width，至少样式表里得写着（认的引擎上会真去量）');
+  }
   const webkitRule = [...sheet.cssRules].find((rule) => rule.selectorText && rule.selectorText.includes('.page-scroll::-webkit-scrollbar'));
   assert(webkitRule && webkitRule.style.display === 'none', 'iPhone 的 Safari 要靠 ::-webkit-scrollbar { display: none }');
 });

@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>平台自检 - 我的待办清单</title>
+<style>
+  html { touch-action: manipulation; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 24px 16px 60px;
+    color: #333;
+    line-height: 1.6;
+  }
+
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .lead { color: #666; font-size: 14px; margin-top: 0; }
+  h2 { font-size: 15px; margin: 28px 0 8px; color: #555; }
+
+  .probe {
+    border: 1px solid #e5e5e5;
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+  }
+
+  .probe-title { font-weight: 600; font-size: 15px; }
+  .probe-why { color: #777; font-size: 13px; margin: 2px 0 8px; }
+
+  .verdict { font-size: 14px; }
+  .verdict.wait { color: #999; }
+  .verdict.pass { color: #2f8a4c; }
+  .verdict.fail { color: #d03030; }
+  .verdict.info { color: #4a90e2; }
+
+  button {
+    font-size: 16px;                 /* 小于 16px 的话 iPhone 点进去会放大 */
+    padding: 8px 14px;
+    margin-right: 8px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    background: #fff;
+  }
+
+  input {
+    font-size: 16px;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    width: 160px;
+  }
+
+  .env { background: #f4f7fb; border-radius: 10px; padding: 12px 14px; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<h1>平台自检</h1>
+<p class="lead">
+  这一页不测代码，测的是<strong>运行环境</strong>。
+  应用里有些地方依赖平台替我们做事：发某个事件、弹某个框、把数据留住。
+  这些假设自动测试验证不了——测试里的事件是它自己造的，造得出来不代表真设备会发。
+  所以换了新环境（新手机、新系统、装进外壳），来这一页点一遍。
+</p>
+
+<div class="env" id="env">正在识别环境……</div>
+
+<h2>不用点，打开就知道</h2>
+<div id="auto"></div>
+
+<h2>要你动手点一下</h2>
+<div id="manual"></div>
+
+<script>
+// 每条自检都是一个"我们依赖的平台行为"。写法统一：
+//   { name: 叫什么, why: 哪儿依赖它, run: 怎么验证 }
+// 结论只有三种：通过、失败、仅供参考（info）
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function addProbe(container, { name, why }) {
+  const box = el('div', 'probe');
+  box.append(el('div', 'probe-title', name), el('div', 'probe-why', why));
+  const verdict = el('div', 'verdict wait', '等待……');
+  const actions = el('div');
+  box.append(actions, verdict);
+  container.appendChild(box);
+
+  return {
+    actions: actions,
+    say: (kind, text) => {
+      verdict.className = 'verdict ' + kind;
+      verdict.textContent = (kind === 'pass' ? '✓ ' : kind === 'fail' ? '✗ ' : 'ℹ️ ') + text;
+    }
+  };
+}
+
+// ---- 这是什么环境 ----
+const inShell = Boolean(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.todolist);
+document.getElementById('env').textContent =
+  (inShell ? '✓ 正在 iOS 外壳（应用）里运行' : '这是普通浏览器，不是应用外壳')
+  + ' · ' + (window.matchMedia('(hover: none)').matches ? '触屏设备' : '有鼠标的设备')
+  + ' · 屏幕 ' + window.innerWidth + '×' + window.innerHeight;
+
+// ================= 自动的 =================
+const auto = document.getElementById('auto');
+
+(() => {
+  const probe = addProbe(auto, {
+    name: '数据存得住（localStorage）',
+    why: '所有待办、打卡记录都存在这里。存不住等于应用没法用'
+  });
+  try {
+    const key = 'platform-probe';
+    localStorage.setItem(key, '1');
+    const back = localStorage.getItem(key) === '1';
+    localStorage.removeItem(key);
+    probe.say(back ? 'pass' : 'fail', back ? '写得进也读得出' : '写进去读不回来');
+  } catch (error) {
+    probe.say('fail', '用不了：' + error.message);
+  }
+})();
+
+(() => {
+  const probe = addProbe(auto, {
+    name: '刷新之后数据还在',
+    why: '上一条只证明当场能读写。真正要紧的是关掉再打开还在不在'
+  });
+  const key = 'platform-probe-persist';
+  const before = localStorage.getItem(key);
+  if (before) {
+    probe.say('pass', '上次写的还在（' + before + '），说明留得住');
+    localStorage.removeItem(key);
+  } else {
+    localStorage.setItem(key, new Date().toLocaleTimeString());
+    probe.say('info', '已经写了一条。请把这一页刷新（或关掉应用重开）再看这里');
+  }
+})();
+
+(() => {
+  const probe = addProbe(auto, {
+    name: '附件仓库能开（IndexedDB）',
+    why: '图片、视频、录音存在这里，localStorage 放不下'
+  });
+  try {
+    const request = indexedDB.open('platform-probe-db', 1);
+    request.onsuccess = () => {
+      request.result.close();
+      indexedDB.deleteDatabase('platform-probe-db');
+      probe.say('pass', '打得开');
+    };
+    request.onerror = () => probe.say('fail', '打不开：' + (request.error && request.error.message));
+  } catch (error) {
+    probe.say('fail', '用不了：' + error.message);
+  }
+})();
+
+(() => {
+  const probe = addProbe(auto, {
+    name: 'CSS 支持情况',
+    why: '横向夹住页面用 overflow-x: clip；藏滚动条用 scrollbar-width（Safari 18.2 才支持，老版本靠 ::-webkit-scrollbar）；刘海留白用 env()'
+  });
+  const facts = [
+    ['overflow-x: clip', CSS.supports('overflow-x', 'clip')],
+    ['scrollbar-width: none', CSS.supports('scrollbar-width', 'none')],
+    ['env(safe-area-inset-top)', CSS.supports('padding-top', 'env(safe-area-inset-top)')]
+  ];
+  probe.say('info', facts.map(([name, ok]) => name + (ok ? ' 支持' : ' 不支持')).join(' · '));
+})();
+
+(() => {
+  const probe = addProbe(auto, {
+    name: '提醒由谁负责',
+    why: '网页版靠浏览器通知（只有开着才响）；装进外壳后交给系统排，关着也响'
+  });
+  if (inShell) {
+    probe.say('pass', '在外壳里：提醒交给系统排队，app 关着也会响');
+  } else if (typeof Notification === 'undefined') {
+    probe.say('info', '这个浏览器没有通知功能，提醒不会响');
+  } else {
+    probe.say('info', '网页版：靠浏览器通知，当前授权状态 ' + Notification.permission + '（关掉网页就不会响）');
+  }
+})();
+
+// ================= 要动手的 =================
+const manual = document.getElementById('manual');
+
+(() => {
+  const probe = addProbe(manual, {
+    name: '连点两下会产生两次 click',
+    why: '“双击日期回到今天”靠的就是这个。真栽过：一开始用浏览器自带的 dblclick，iPhone 上根本不发'
+  });
+  const btn = el('button', null, '在这里连点两下');
+  let last = 0;
+  let single = 0;
+  btn.addEventListener('click', (event) => {
+    const gap = event.timeStamp - last;
+    if (last && gap <= 300) {
+      probe.say('pass', `两次 click 间隔 ${Math.round(gap)}ms，连点两下认得出来`);
+      last = 0;
+      return;
+    }
+    last = event.timeStamp;
+    single++;
+    if (single === 1) probe.say('info', '收到第一下了，接着点第二下');
+  });
+  probe.actions.appendChild(btn);
+})();
+
+(() => {
+  const probe = addProbe(manual, {
+    name: '（对照）dblclick 这个事件发不发',
+    why: '不发也没关系——我们已经不靠它了。留着是为了知道这个平台到底什么情况'
+  });
+  const btn = el('button', null, '在这里连点两下');
+  btn.addEventListener('dblclick', () => probe.say('info', '这个平台会发 dblclick'));
+  setTimeout(() => {}, 0);
+  probe.actions.appendChild(btn);
+  probe.say('wait', '等待……（点完上面那条之后，这里要是一直没动静，就说明这个平台不发 dblclick）');
+})();
+
+(() => {
+  const probe = addProbe(manual, {
+    name: '点输入框会发 focusin，代码也能设焦点',
+    why: '“打字时收起底部标签栏”靠 focusin/focusout；测试还靠代码设焦点来模拟打字'
+  });
+  const input = el('input');
+  input.placeholder = '点这里';
+  const btn = el('button', null, '用代码设焦点');
+
+  let gotFocusin = false;
+  input.addEventListener('focusin', () => {
+    gotFocusin = true;
+    probe.say('pass', '点一下就发了 focusin');
+  });
+  btn.addEventListener('click', () => {
+    input.blur();
+    input.focus();
+    const worked = document.activeElement === input;
+    probe.say(worked ? 'pass' : 'info',
+      (worked ? '代码设焦点有效' : '代码设不了焦点（iOS 常见，只认用户亲手点）')
+      + (gotFocusin ? '；点击时的 focusin 也正常' : ''));
+  });
+  probe.actions.append(input, btn);
+})();
+
+(() => {
+  const probe = addProbe(manual, {
+    name: '横着滑时能拦住页面滚动',
+    why: '左右滑切标签、右滑返回都要先把页面滚动拦下来，否则会斜着飘'
+  });
+  const pad = el('div');
+  pad.textContent = '在这块灰色区域里横着滑一下';
+  pad.style.cssText = 'padding:24px;background:#f0f0f0;border-radius:8px;text-align:center;touch-action:pan-y';
+
+  let startX = 0;
+  pad.addEventListener('touchstart', (event) => { startX = event.touches[0].clientX; }, { passive: true });
+  pad.addEventListener('touchmove', (event) => {
+    const dx = event.touches[0].clientX - startX;
+    if (Math.abs(dx) < 12) return;
+    // cancelable 为 false 说明浏览器已经开始滚了，这时再拦也没用
+    if (!event.cancelable) {
+      probe.say('fail', '拦不住了：浏览器已经接管这次滑动（手势会和滚动打架）');
+      return;
+    }
+    event.preventDefault();
+    probe.say('pass', `横滑 ${Math.round(dx)}px，拦得住`);
+  }, { passive: false });
+
+  probe.actions.appendChild(pad);
+})();
+
+(() => {
+  const probe = addProbe(manual, {
+    name: '按住不放会不会被系统截走',
+    why: '长按拖动排序要按住约半秒。系统要是这时候弹出选词放大镜之类的，拖动就废了'
+  });
+  const pad = el('div');
+  pad.textContent = '在这里按住不放一秒';
+  pad.style.cssText = 'padding:24px;background:#f0f0f0;border-radius:8px;text-align:center;user-select:none;-webkit-user-select:none';
+
+  let timer = null;
+  pad.addEventListener('pointerdown', () => {
+    timer = setTimeout(() => probe.say('pass', '按住一秒没被打断，长按拖动可用'), 1000);
+  });
+  ['pointerup', 'pointercancel'].forEach((name) => {
+    pad.addEventListener(name, (event) => {
+      if (timer === null) return;
+      clearTimeout(timer);
+      timer = null;
+      if (event.type === 'pointercancel') {
+        probe.say('fail', '按住的过程被系统打断了（pointercancel），长按拖动会失灵');
+      }
+    });
+  });
+
+  probe.actions.appendChild(pad);
+})();
+
+(() => {
+  const probe = addProbe(manual, {
+    name: 'confirm() 会弹窗，而且返回值对',
+    why: '删清单、删打卡、导入数据前都要问一句。外壳里要是不接这个，点了会毫无反应——真栽过'
+  });
+  const btn = el('button', null, '点我，然后在弹窗里选“确定”');
+  btn.addEventListener('click', () => {
+    const answer = window.confirm('这是自检用的弹窗，请点“确定”');
+    probe.say(answer ? 'pass' : 'fail',
+      answer ? '弹窗出现了，点确定返回 true' : '返回了 false —— 要么你点的是取消，要么这个环境根本没弹窗（那就是坏的）');
+  });
+  probe.actions.appendChild(btn);
+})();
+</script>
+
+</body>
+</html>

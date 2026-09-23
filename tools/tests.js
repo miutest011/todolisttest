@@ -84,6 +84,17 @@ function click(element) {
 
 // 连点两下。故意不发 dblclick：iPhone 上那个事件经常不发，
 // 代码是自己数两次点击间隔的，测试也要照着真实情况来
+// 让某个输入框真的拿到光标。拿不到就跳过这条测试 ——
+// iOS Safari 只认用户亲手点的焦点，代码调 .focus() 不生效，
+// 于是所有靠 document.activeElement 判断的测试在那边都会红（在真 WebKit 里跑才发现的）
+function focusOrSkip(field) {
+  field.focus();
+  if (document.activeElement !== field) {
+    skip('这个浏览器不让代码给输入框设焦点（iOS Safari 就是这样），这条只能在电脑上测');
+  }
+  return field;
+}
+
 function doubleClick(element) {
   click(element);
   click(element);

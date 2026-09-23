@@ -122,6 +122,18 @@ xcrun simctl get_app_container booted com.你的名字.todolist data
 **模拟器验证不了的**：真机的手感（滑动、键盘）、系统分享面板和文件选择的真实行为、
 以及"7 天签名过期"这类只有真机才有的事。
 
+## 平台自检页
+
+外壳里能打开 `tools/platform.html`——它把"我们依赖平台做的事"一条条列出来，当场点一遍就知道这个环境行不行：
+
+```bash
+xcrun simctl launch booted com.你的名字.todolist -startPage platform.html
+```
+
+真机上：Xcode → Product → Scheme → Edit Scheme → Run → Arguments，加两项 `-startPage` 和 `platform.html`，按 ▶️ 就进自检页；试完记得删掉。
+
+**新系统、新手机、改了外壳之后都点一遍。** 加了新的平台依赖（新手势、新的系统交互），往那一页加一条。
+
 ## 装好之后要当场验证的几件事
 
 这层壳**没有自动测试**（网页那半有 375 条，Swift 这半一条没有），所以第一次装上要手动确认：

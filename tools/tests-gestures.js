@@ -339,7 +339,7 @@ test('左右滑：换了标签后，长按标签出来的"改名 / 删除"收起
   assertEqual([managingTagId, root.querySelector('.tag-manager')], [null, null], '换标签就收起，和点标签一样');
 });
 
-test('左右滑：正在打字、按在输入框里、菜单开着、用鼠标，都不切换', () => {
+test('左右滑：按在输入框里、菜单开着、用鼠标，都不切换', () => {
   const { root } = listTagSetup({ expandedCategory: '工作' });
 
   // 列表里改清单名的输入框
@@ -347,14 +347,10 @@ test('左右滑：正在打字、按在输入框里、菜单开着、用鼠标�
   render();
   const input = root.querySelector('.edit-input');
   assert(input, '先确认输入框出来了');
-  input.blur();          // 两条规则分开测：先看"按在输入框里"，这时光标不在里面
+  input.blur();          // 这时光标不在里面，测的是"按在输入框里"这一条
   fingerSwipe(input, -(SWIPE_DISTANCE + 10), 0);
   assertEqual(listTagFilter, 'all', '按在输入框里滑可能是在挪光标');
-  input.focus();         // 再看"正在打字"，这回按在列表空白处
-  fingerSwipe(scrollerOf(root), -(SWIPE_DISTANCE + 10), 0);
-  assertEqual(listTagFilter, 'all', '光标还在输入框里（键盘开着）不切换');
   editingCategory = null;
-  input.blur();
   render();
 
   openCategoryMenu(root, '工作');
@@ -365,6 +361,19 @@ test('左右滑：正在打字、按在输入框里、菜单开着、用鼠标�
 
   fingerSwipe(scrollerOf(root), -(SWIPE_DISTANCE + 10), 0, { pointerType: 'mouse' });
   assertEqual(listTagFilter, 'all', '鼠标不算');
+});
+
+// "光标在输入框里就不切换"单独一条：它要求代码能给输入框设上焦点，
+// 而 iOS Safari 只认用户亲手点的焦点 —— 那边会跳过这一条，不该连累上面那几条规则
+test('左右滑：正在打字（键盘开着）时不切换', () => {
+  const { root } = listTagSetup({ expandedCategory: '工作' });
+
+  editingCategory = '工作';
+  render();
+  focusOrSkip(root.querySelector('.edit-input'));
+
+  fingerSwipe(scrollerOf(root), -(SWIPE_DISTANCE + 10), 0);
+  assertEqual(listTagFilter, 'all', '光标还在输入框里（键盘开着）不切换');
 });
 
 test('左右滑：日历页没有标签，滑了什么都不发生', () => {

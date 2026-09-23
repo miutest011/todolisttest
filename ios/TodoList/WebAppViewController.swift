@@ -46,7 +46,18 @@ final class WebAppViewController: UIViewController {
             webView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
         ])
 
-        webView.load(URLRequest(url: URL(string: "todolist://app/index.html")!))
+        webView.load(URLRequest(url: URL(string: "todolist://app/" + startPage())!))
+    }
+
+    // 平时打开应用本身。带上启动参数就打开别的页面，用来在真外壳里跑"平台自检"：
+    //   xcrun simctl launch booted <bundle id> -startPage platform.html
+    // （真机上在 Xcode 的 Edit Scheme → Arguments 里加这两项）
+    private func startPage() -> String {
+        let arguments = ProcessInfo.processInfo.arguments
+        if let index = arguments.firstIndex(of: "-startPage"), index + 1 < arguments.count {
+            return arguments[index + 1]
+        }
+        return "index.html"
     }
 
     // 网页那边在等这个回调（native.js 里的 window.nativeFileChosen）。

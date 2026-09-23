@@ -181,6 +181,33 @@ async function runTests(outputEl, summaryEl) {
     outputEl.appendChild(warning);
   }
 
+  // 失败的先列一遍名字。有小四百条测试，不这么做就得自己滚半天去找哪条是红的 ——
+  // 在手机上看结果时尤其要命（真在模拟器里滚过）
+  if (failed > 0) {
+    const banner = document.createElement('div');
+    banner.className = 'banner';
+    // 连失败原因一起写出来：在手机上看结果时，只有名字还得自己滚下去找
+    banner.textContent = '✗ 失败的是这些：\n'
+      + first.filter((result) => outcomeOf(result) === 'fail')
+        .map((result) => '· ' + result.name + ' —— ' + String(result.error && result.error.message).split('\n')[0])
+        .join('\n');
+    banner.style.whiteSpace = 'pre-wrap';
+    outputEl.appendChild(banner);
+  }
+
+  // 跳过的也列出来。跳过不是失败，但得知道这台机器上哪些没测到 ——
+  // 在手机上跑的时候尤其要紧（那边会因为环境差异跳过一些）
+  if (skippedCount > 0) {
+    const banner = document.createElement('div');
+    banner.className = 'banner';
+    banner.textContent = '⤼ 跳过的是这些：\n'
+      + first.filter((result) => result.skipped)
+        .map((result) => '· ' + result.name + ' —— ' + result.skipReason)
+        .join('\n');
+    banner.style.whiteSpace = 'pre-wrap';
+    outputEl.appendChild(banner);
+  }
+
   first.forEach((result) => {
     const row = document.createElement('div');
 
