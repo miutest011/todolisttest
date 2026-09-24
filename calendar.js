@@ -283,7 +283,9 @@ function createCalendarView() {
     body.appendChild(createTaskGroup('已过期', overdue, 'overdue'));
   }
   if (due.length > 0) {
-    body.appendChild(createTaskGroup(calendarDay === todayKey ? '今天到期' : formatDayLabel(calendarDay), due, ''));
+    // 不写"今天到期"这种小标题：上面的日历已经把"在看哪天"说清楚了，
+    // 再写一行反而挤着日历。"已过期"那组留着 —— 它说的是另一回事，不写就分不出来
+    body.appendChild(createTaskGroup(null, due, ''));
   }
   if (overdue.length === 0 && due.length === 0) {
     const empty = document.createElement('div');
@@ -438,14 +440,17 @@ function createTaskDot() {
 
 // 任务分组（"已过期 2"这样的小标题加一串任务）。
 // 这一页上的任务不给拖拽也不给置顶：这里的任务来自不同清单，排序和"置顶到哪"都说不清
+// label 传 null 就不画小标题
 function createTaskGroup(label, items, extraClass) {
   const box = document.createElement('section');
   box.className = 'today-section';
 
-  const header = document.createElement('div');
-  header.className = extraClass ? 'today-section-title ' + extraClass : 'today-section-title';
-  header.textContent = `${label} ${items.length}`;
-  box.appendChild(header);
+  if (label !== null) {
+    const header = document.createElement('div');
+    header.className = extraClass ? 'today-section-title ' + extraClass : 'today-section-title';
+    header.textContent = `${label} ${items.length}`;
+    box.appendChild(header);
+  }
 
   const list = document.createElement('ul');
   items.forEach(({ todo, index }) => {

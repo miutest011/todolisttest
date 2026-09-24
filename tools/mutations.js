@@ -144,6 +144,28 @@ const MUTATIONS = [
     replace: ''
   },
 
+  {
+    group: '打卡标签',
+    name: '手写圈又变回黑色（和选中的蓝圆撞色）',
+    file: 'style.css',
+    find: "    color: var(--accent);\n    stroke-width: 1.6;",
+    replace: "    color: var(--text-title);\n    stroke-width: 1.6;"
+  },
+  {
+    group: '打卡标签',
+    name: '手写圈排在数字下面（被实心圆切掉半截）',
+    file: 'style.css',
+    find: "    position: absolute;\n    z-index: 2;\n    top: -3px;",
+    replace: "    position: absolute;\n    top: -3px;"
+  },
+  {
+    group: '打卡标签',
+    name: '手写圈和数字的圆一样大（贴在一起）',
+    file: 'style.css',
+    find: "    width: 40px;\n    height: 40px;\n    color: var(--accent);",
+    replace: "    width: 28px;\n    height: 28px;\n    color: var(--accent);"
+  },
+
   // ---------- 共用标签组件（tags.js）----------
   {
     group: '共用标签组件',
@@ -1539,6 +1561,42 @@ const MUTATIONS = [
     file: 'calendar.js',
     find: "const DOUBLE_TAP_GAP = 300;",
     replace: "const DOUBLE_TAP_GAP = 100000;"
+  },
+
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '今天又给了底色（和"选中"混成一样）',
+    file: 'style.css',
+    find: "  .calendar-cell.today .calendar-day,\n  .week-day.today .week-day-number {\n    font-weight: 600;\n    color: var(--accent);\n  }",
+    replace: "  .calendar-cell.today .calendar-day,\n  .week-day.today .week-day-number {\n    background: var(--divider);\n  }"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '周视图的选中样式和月视图对不上',
+    file: 'style.css',
+    find: "  .calendar-cell.selected .calendar-day,\n  .week-day.selected .week-day-number {",
+    replace: "  .calendar-cell.selected .calendar-day {"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '数字的圆又把有任务的小圆点盖住了',
+    file: 'style.css',
+    find: "    align-items: flex-start;           /* 数字靠上：下面那条留给\"有任务\"的小圆点，别让圆盖住它 */\n    justify-content: center;\n    padding-top: 4px;\n    height: 44px;",
+    replace: "    align-items: center;\n    justify-content: center;\n    height: 40px;"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '选中的那天又不画小圆点了',
+    file: 'style.css',
+    find: "  .calendar-cell .task-dot {\n    bottom: 6px;\n  }",
+    replace: "  .calendar-cell.selected .task-dot {\n    display: none;\n  }"
+  },
+  {
+    group: '日历页：月 / 周 / 日',
+    name: '那天的任务上面又写回"今天到期"小标题',
+    file: 'calendar.js',
+    find: "    body.appendChild(createTaskGroup(null, due, ''));",
+    replace: "    body.appendChild(createTaskGroup(calendarDay === todayKey ? '今天到期' : formatDayLabel(calendarDay), due, ''));"
   },
 
   // ---------- 测试工具自己 ----------

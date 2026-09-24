@@ -98,9 +98,9 @@ test('日历：点某一天，下面换成那天的任务', () => {
   click(calendarDayCell(root, Number(dateKey(dayAt(2)).slice(8))));
 
   assertEqual(textsOf(root, '.todo-text'), ['后天的事'], '列的是点中那天的');
-  assert(root.querySelector('.today-section-title').textContent.startsWith(formatDayLabel(dateKey(dayAt(2)))),
-    '小标题写清楚是哪天，实际：' + root.querySelector('.today-section-title').textContent);
   assert(calendarDayCell(root, Number(dateKey(dayAt(2)).slice(8))).classList.contains('selected'), '点中的那天高亮');
+  // 不写"9 月 25 日"这种小标题：上面日历里高亮的那天已经说清楚了，写了反而挤
+  assertEqual(textsOf(root, '.today-section-title'), [], '这一组不该有小标题');
 });
 
 test('日历：过期的任务只在看今天时单独列出来，看别的日子不跟着跑', () => {
@@ -245,6 +245,65 @@ test('日历：切换按钮上要标出现在看的是哪个视图', () => {
   switchTo(root, '周');
   assertEqual(active(), ['周'], '切了之后标在新的那个上');
   assertEqual(root.querySelectorAll('.view-switch-btn.active').length, 1, '同时只能有一个是选中的');
+});
+
+
+// ========== 样子 ==========
+
+test('日历：今天是蓝字不给底色，选中是实心圆；月视图和周视图一个样', async () => {
+  await useAppStyles();
+  const { root } = calendarSetup();
+  openCalendar(root);
+
+  // 先选到别的天，这样"今天"和"选中"能同时看到
+  const otherDay = Number(dateKey(dayAt(1)).slice(8));
+  click(calendarDayCell(root, otherDay));
+
+  // 把值当场抄下来：getComputedStyle 给的是实时对象，等下切到周视图、这些元素被删掉之后，
+  // 再去读就全成空字符串了（真踩过）
+  const look = (element) => {
+    const style = getComputedStyle(element);
+    return { color: style.color, background: style.backgroundColor, radius: style.borderRadius, width: style.width };
+  };
+
+  const monthToday = look(calendarDayCell(root, Number(TODAY.slice(8))).querySelector('.calendar-day'));
+  const monthPicked = look(calendarDayCell(root, otherDay).querySelector('.calendar-day'));
+
+  assertEqual(monthToday.background, 'rgba(0, 0, 0, 0)', '今天不给底色，底色留给"选中"');
+  assert(monthToday.color !== monthPicked.color, '今天要有自己的颜色（蓝字）');
+  assert(monthPicked.background !== 'rgba(0, 0, 0, 0)', '选中的那天是个实心圆');
+  // 圆角算出来可能是 '50%'，也可能是像素，两种写法都认
+  const halfWidth = (parseFloat(monthPicked.width) || 26) / 2;
+  assert(monthPicked.radius.includes('%')
+    ? parseFloat(monthPicked.radius) >= 50
+    : parseFloat(monthPicked.radius) >= halfWidth,
+    '要是个圆，不是方块，实际圆角：' + monthPicked.radius);
+
+  switchTo(root, '周');
+  const weekToday = look(weekDayCell(root, Number(TODAY.slice(8))).querySelector('.week-day-number'));
+  const weekPicked = look(weekDayCell(root, otherDay).querySelector('.week-day-number'));
+
+  assertEqual([weekToday.color, weekToday.background], [monthToday.color, monthToday.background],
+    '周视图的"今天"要和月视图一模一样');
+  assertEqual([weekPicked.color, weekPicked.background], [monthPicked.color, monthPicked.background],
+    '周视图的"选中"也要一样（原来这里是淡蓝方框，两边对不上）');
+});
+
+test('日历：有任务的小圆点不会被数字的圆盖住，选中那天也看得见', async () => {
+  await useAppStyles();
+  const { root } = calendarSetup();
+  openCalendar(root);
+
+  const todayCell = calendarDayCell(root, Number(TODAY.slice(8)));   // 今天有任务，而且默认就选中
+  const dot = todayCell.querySelector('.task-dot');
+  assert(dot, '今天有任务，要有小圆点');
+  assert(getComputedStyle(dot).display !== 'none', '选中的那天也得看得见这个点');
+
+  const dotBox = dot.getBoundingClientRect();
+  const numberBox = todayCell.querySelector('.calendar-day').getBoundingClientRect();
+  assert(dotBox.top >= numberBox.bottom - 0.5,
+    `小圆点要落在数字圆下面（点的上边 ${Math.round(dotBox.top)}，圆的下边 ${Math.round(numberBox.bottom)}）`);
+  assert(dotBox.bottom <= todayCell.getBoundingClientRect().bottom, '也别掉出格子外面');
 });
 
 

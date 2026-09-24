@@ -359,7 +359,7 @@ test('打卡详情：打过卡的日子用手写圈圈出，不显示次数', ()
   assertEqual(root.querySelector('.calendar-count'), null, '月历上不再显示次数');
 });
 
-test('打卡详情：今天用灰底圆标出，并且默认就选中今天', () => {
+test('打卡详情：今天标出来（和日历页一个样式），并且默认就选中今天', () => {
   const { root } = setup({ logItems: [logItem('喝水', [FIXED_NOW])] });
   openLogsTab(root);
 
@@ -369,6 +369,26 @@ test('打卡详情：今天用灰底圆标出，并且默认就选中今天', ()
   assert(todayCell.classList.contains('today'), '今天那一格要标出来');
   assert(todayCell.classList.contains('selected'), '刚进详情页默认看今天的记录');
   assertEqual(root.querySelectorAll('.log-entry').length, 1, '下面应该列着今天那一次');
+});
+
+test('打卡详情：手写圈用主色、画在日期圆上面（和选中的蓝圆叠在一起也不被切）', async () => {
+  await useAppStyles();
+  const { root } = setup({ logItems: [logItem('喝水', [FIXED_NOW])] });
+  openLogsTab(root);
+  openLogDetailByTap(root, '喝水');
+
+  const cell = calendarCell(root, fixedTodayDay());
+  assert(cell.classList.contains('selected'), '今天默认选中，正好是"圈和蓝圆叠在一起"那种情况');
+
+  const circle = getComputedStyle(cell.querySelector('.hand-circle'));
+  const number = getComputedStyle(cell.querySelector('.calendar-day'));
+
+  assertEqual(circle.color, number.backgroundColor,
+    '圈用主色，和选中那个蓝圆同一个颜色 —— 原来是黑色，叠在一起很难看（用户截图反馈的）');
+  assert(Number(circle.zIndex) > Number(number.zIndex),
+    '圈要画在数字上面：手写的椭圆边缘会伸进数字那个圆里，排在下面就被实心圆切掉半截');
+  assert(parseFloat(circle.width) >= parseFloat(number.width) + 10,
+    `圈要比数字的圆大出一圈，套着它而不是贴着它（圈 ${circle.width}，数字圆 ${number.width}）`);
 });
 
 test('打卡详情：点别的日期，下面就换成那天的记录', () => {

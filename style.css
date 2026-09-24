@@ -229,11 +229,9 @@
     background: var(--accent);
   }
 
-  /* 月视图里选中的那天是个主色实心圆，小圆点贴在圆下缘会拖出一个水滴形状，很难看。
-     索性不画：这一天的任务就列在日历正下方，那个点已经没有信息量了。
-     （周视图的选中是淡蓝底，点照常画得清楚，不用管） */
-  .calendar-cell.selected .task-dot {
-    display: none;
+  /* 月历格子里，小圆点落在数字圆的下面一点，别贴着 */
+  .calendar-cell .task-dot {
+    bottom: 6px;
   }
 
   /* 周视图：上面一行年月（和月视图同一个表头），下面一行七天 */
@@ -250,8 +248,7 @@
     position: relative;      /* 小圆点是绝对定位的，要有个参照 */
     flex: 1;
     padding: var(--space-2) 0 var(--space-4);
-    border: 1px solid transparent;
-    border-radius: var(--radius);
+    border: none;
     background: none;
     line-height: 1.4;
   }
@@ -262,20 +259,22 @@
     color: var(--text-subtle);
   }
 
+  /* 和月历里的数字同一个圆：选中就是蓝色实心圆，今天是蓝字 */
   .week-day-number {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    margin: 2px auto 0;
+    border-radius: 50%;
     font-size: var(--text-base);
     color: var(--text-body);
   }
 
-  .week-day.today .week-day-number {
-    font-weight: 600;
-    color: var(--accent);
-  }
-
-  .week-day.selected {
-    border-color: var(--accent);
-    background: #eaf2fb;
+  /* 小标题去掉之后，第一张任务卡片会贴着日历，留一点空 */
+  .calendar-view .page-scroll {
+    padding-top: var(--space-2);
   }
 
   /* 这一天没有任务时的那行小字。比 .empty-state 轻，因为上面还有个日历撑着 */
@@ -488,9 +487,10 @@
   .calendar-cell {
     position: relative;                /* 打卡的手写圈、有任务的小圆点都是绝对定位的 */
     display: flex;
-    align-items: center;
+    align-items: flex-start;           /* 数字靠上：下面那条留给"有任务"的小圆点，别让圆盖住它 */
     justify-content: center;
-    height: 40px;
+    padding-top: 4px;
+    height: 44px;
     font-size: var(--text-sm);
     color: var(--text-body);
     cursor: pointer;      /* 点某一天，下面就列出那天的记录 */
@@ -501,10 +501,10 @@
   }
 
   /* 日期数字下面的圆底（今天／选中时才有颜色）。
-     它要比手写圈明显小一圈，否则会把圈盖住 —— 手写圈画出来的椭圆
-     大约只占画布的八成，所以 26 和 36 这两个数字是配套的，改一个要想着另一个 */
+     它要比手写圈明显小一圈，圈才套得住它 —— 手写圈画出来的椭圆大约只占画布的八成，
+     所以 26 和下面 .hand-circle 的 40 是配套的，改一个要想着另一个 */
   .calendar-day {
-    position: relative;   /* 压在手写圈上面 */
+    position: relative;
     z-index: 1;
     display: flex;
     align-items: center;
@@ -514,24 +514,34 @@
     border-radius: 50%;
   }
 
-  /* 今天：灰底圆 */
-  .calendar-cell.today .calendar-day {
-    background: var(--divider);
+  /* 今天：蓝字，不给底色。底色留给"选中"，两件事各用一种表现，月视图和周视图一个规矩 */
+  .calendar-cell.today .calendar-day,
+  .week-day.today .week-day-number {
+    font-weight: 600;
+    color: var(--accent);
   }
 
-  /* 选中的那天：主色圆，盖过"今天"的灰底 */
-  .calendar-cell.selected .calendar-day {
+  /* 选中的那天：蓝色实心圆、白字，盖过上面的蓝字 */
+  .calendar-cell.selected .calendar-day,
+  .week-day.selected .week-day-number {
     color: var(--surface);
     background: var(--accent);
   }
 
-  /* 打过卡的日子：像用笔圈出来的黑色圈。不显示打了几次 ——
-     具体次数看下面那天的记录列表就行，月历上只回答"这天打没打" */
+  /* 打过卡的日子：像用笔圈出来的圈。不显示打了几次 ——
+     具体次数看下面那天的记录列表就行，月历上只回答"这天打没打"。
+     三个讲究，都是为了和"今天 / 选中"那个蓝圆叠在一起时还好看（用户截图反馈的）：
+     ① 用主色而不是黑色，颜色上和整个应用一致；
+     ② z-index 比数字大：手写圈是画出来的椭圆，边缘会伸进数字那个圆里，
+        排在下面的话会被实心圆切掉半截；
+     ③ 40px 比数字的圆（26px）大出一圈，套着它而不是贴着它 */
   .hand-circle {
     position: absolute;
-    width: 36px;
-    height: 36px;
-    color: var(--text-title);
+    z-index: 2;
+    top: -3px;            /* 数字圆从 padding-top: 4px 开始、高 26，圈要和它同心 */
+    width: 40px;
+    height: 40px;
+    color: var(--accent);
     stroke-width: 1.6;
     pointer-events: none;
   }
